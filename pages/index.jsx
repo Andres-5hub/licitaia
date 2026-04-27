@@ -310,6 +310,8 @@ tr:nth-child(even) td{background:rgba(255,255,255,0.02)}
 .lic-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px}
 .lic-badge{font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:5px;border:1px solid;white-space:nowrap}
 .lic-badge.vigente{background:rgba(16,185,129,0.1);border-color:rgba(16,185,129,0.25);color:var(--green)}
+.lic-badge.seguimiento{background:rgba(234,179,8,0.1);border-color:rgba(234,179,8,0.3);color:#b45309}
+.lic-badge.adjudicada{background:rgba(99,102,241,0.1);border-color:rgba(99,102,241,0.25);color:#4f46e5}
 .lic-badge.otro{background:var(--surface);border-color:var(--border2);color:var(--ink3)}
 .lic-score-row{display:flex;align-items:center;gap:8px;margin-top:4px;padding-top:10px;border-top:1px solid var(--border)}
 .lic-score-num{font-family:var(--display);font-size:22px;font-weight:700;line-height:1;min-width:34px}
@@ -626,6 +628,7 @@ export default function LicitaIA() {
   const [rate,          setRate]          = useState(()=>{ try { return getRateLimit(); } catch { return { usos:0, ultima:null, resetAt:null }; } });
   const [filtroDepe,    setFiltroDepe]    = useState("");
   const [filtroFecha,   setFiltroFecha]   = useState("");
+  const [filtroEstatus, setFiltroEstatus] = useState("");
   const [v2Token,       setV2Token]       = useState(()=>{ try { return localStorage.getItem("licitaia_v4_v2token")||""; } catch { return ""; } });
   const [showToken,     setShowToken]     = useState(false);
 
@@ -914,16 +917,17 @@ export default function LicitaIA() {
             const limitado = usosDisp === 0;
             const fmtTs = (ts) => ts ? new Date(ts).toLocaleString("es-MX",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}) : "—";
 
-            // Dependencias únicas para el filtro
+            // Dependencias y estatuses únicos para los filtros
             const dependencias = [...new Set(licitaciones.map(l=>l.dependencia).filter(Boolean))].sort();
+            const estatuses    = [...new Set(licitaciones.map(l=>l.estatus).filter(s=>s&&s!=="—"))].sort();
 
             // Aplicar filtros
             const visibles = licitaciones
-              .filter(l => !filtroDepe || l.dependencia === filtroDepe)
-              .filter(l => !filtroFecha || (l.fechaPublicacion && l.fechaPublicacion >= filtroFecha))
+              .filter(l => !filtroDepe    || l.dependencia === filtroDepe)
+              .filter(l => !filtroFecha   || (l.fechaPublicacion && l.fechaPublicacion >= filtroFecha))
+              .filter(l => !filtroEstatus || (l.estatus && l.estatus.toUpperCase().includes(filtroEstatus.toUpperCase())))
               .map(l => ({ ...l, score: scoreEmpresa(l, empresa) }))
               .sort((a,b) => {
-                // Primero por fecha desc, luego por score desc
                 if (b.fechaPublicacion && a.fechaPublicacion) {
                   const df = b.fechaPublicacion.localeCompare(a.fechaPublicacion);
                   if (df !== 0) return df;
@@ -935,7 +939,7 @@ export default function LicitaIA() {
               <div className="page">
                 <div className="pg-title">Licitaciones Sonora</div>
                 <div className="pg-sub">
-                  Licitaciones vigentes de CompraNet Sonora v2 · Score de relevancia según tu perfil de empresa.
+                  Licitaciones VIGENTES de CompraNet Sonora v2 · Score de relevancia según tu perfil de empresa.
                 </div>
 
                 {!empresa && (
@@ -958,9 +962,13 @@ export default function LicitaIA() {
                       <option value="">Todas las dependencias</option>
                       {dependencias.map(d=><option key={d} value={d}>{d}</option>)}
                     </select>
+                    <select className="dash-sel" value={filtroEstatus} onChange={e=>setFiltroEstatus(e.target.value)}>
+                      <option value="">Todos los estatus</option>
+                      {estatuses.map(s=><option key={s} value={s}>{s}</option>)}
+                    </select>
                     <input type="date" className="dash-inp" value={filtroFecha} onChange={e=>setFiltroFecha(e.target.value)} title="Publicadas desde"/>
-                    {(filtroDepe||filtroFecha) && (
-                      <button className="btn btn-ghost btn-sm" onClick={()=>{setFiltroDepe("");setFiltroFecha("");}}>✕ Limpiar</button>
+                    {(filtroDepe||filtroFecha||filtroEstatus) && (
+                      <button className="btn btn-ghost btn-sm" onClick={()=>{setFiltroDepe("");setFiltroFecha("");setFiltroEstatus("");}}>✕ Limpiar</button>
                     )}
                   </div>
 
@@ -982,8 +990,8 @@ export default function LicitaIA() {
                 {licitLoading && (
                   <div className="loading" style={{padding:"48px 0"}}>
                     <div className="spinner"/>
-                    <div className="ld-msg">Abriendo portal CompraNet Sonora…</div>
-                    <div className="ld-sub">Puppeteer navegando · puede tardar ~15 s</div>
+                    <div className="ld-msg">Consultando CompraNet Sonora…</div>
+                    <div className="ld-sub">Descargando datos del portal · puede tardar ~10 s</div>
                   </div>
                 )}
 
@@ -1035,9 +1043,10 @@ export default function LicitaIA() {
                     </span>
                     {licitMeta?.fuente && (
                       <span className="dash-fuente">
-                        {licitMeta.fuente === "api-v2-jwt" ? "🟢 CompraNet v2 (vigentes)" :
-                         licitMeta.fuente.includes("csv")  ? "🟡 Portal v1 — histórico" :
-                         licitMeta.fuente.includes("dt")   ? "🟡 Portal v1 — JSON" : licitMeta.fuente}
+                        {licitMeta.fuente === "api-v2-portal" ? "🟢 CompraNet v2 — VIGENTES (portal público)" :
+                         licitMeta.fuente === "api-v2-jwt"    ? "🟢 CompraNet v2 — vigentes (con token)" :
+                         licitMeta.fuente.includes("csv")     ? `🟡 Portal v1 — histórico (${licitMeta.total} registros)` :
+                         licitMeta.fuente.includes("dt")      ? "🟡 Portal v1 — JSON" : licitMeta.fuente}
                       </span>
                     )}
                   </div>
@@ -1048,7 +1057,10 @@ export default function LicitaIA() {
                   <div className="lic-grid">
                     {visibles.map(l => {
                       const sc = l.score;
-                      const esVigente = !l.estatus || l.estatus.toLowerCase().includes("vigente") || l.estatus === "—";
+                      const estatusUp = (l.estatus || "").toUpperCase();
+                      const esVigente    = !l.estatus || estatusUp.includes("VIGENTE") || l.estatus === "—";
+                      const esSeguimiento = estatusUp.includes("SEGUIMIENTO");
+                      const esAdjudicada  = estatusUp.includes("ADJUDICADA");
                       return (
                         <div key={l.id} className="lic-card">
                           <div className="lic-head">
@@ -1060,7 +1072,7 @@ export default function LicitaIA() {
                           </div>
 
                           <div className="lic-meta">
-                            <span className={`lic-badge ${esVigente?"vigente":"otro"}`}>{l.estatus}</span>
+                            <span className={`lic-badge ${esVigente?"vigente":esSeguimiento?"seguimiento":esAdjudicada?"adjudicada":"otro"}`}>{l.estatus}</span>
                             {l.modalidad && l.modalidad !== "—" && <span className="lic-badge otro">{l.modalidad}</span>}
                             {l.tipo && l.tipo !== "—" && <span className="lic-badge otro">{l.tipo}</span>}
                           </div>
@@ -1103,7 +1115,7 @@ export default function LicitaIA() {
                     <div className="de-icon">🔍</div>
                     <div className="de-title">Sin resultados con estos filtros</div>
                     <div className="de-sub">
-                      <button className="btn btn-ghost btn-sm" onClick={()=>{setFiltroDepe("");setFiltroFecha("");}}>Limpiar filtros</button>
+                      <button className="btn btn-ghost btn-sm" onClick={()=>{setFiltroDepe("");setFiltroFecha("");setFiltroEstatus("");}}>Limpiar filtros</button>
                     </div>
                   </div>
                 )}

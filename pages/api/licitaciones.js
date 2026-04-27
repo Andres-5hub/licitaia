@@ -1,39 +1,46 @@
 // pages/api/licitaciones.js
-// Fuentes sin Puppeteer, compatibles con Vercel:
-//   1. compranetv2_2.sonora.gob.mx — API REST v2  (requiere JWT en query ?token=)
-//   2. compranet.sonora.gob.mx/Portal/LoadData    — DataTables JSON público
+// Fuentes en orden de prioridad:
+//   1. compranetv2_2.sonora.gob.mx /api/proveedores/obtenerProcedimientos  (público, sin token)
+//   2. compranetv2_2.sonora.gob.mx /api/procedimientos/buscarProcedimientosAdministrativos (con JWT)
 //   3. compranet.sonora.gob.mx/Portal/ExportToCSV — CSV histórico público
 
 export const config = { api: { responseLimit: "10mb" } };
 
 // ── constantes ────────────────────────────────────────────────────────────────
-const V2_API    = "https://compranetv2_2.sonora.gob.mx";
-const OLD_BASE  = "https://compranet.sonora.gob.mx";
+const V2_API   = "https://compranetv2_2.sonora.gob.mx";
+const OLD_BASE = "https://compranet.sonora.gob.mx";
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
-const HEADERS_JSON = {
-  "User-Agent":          UA,
-  "Accept":              "application/json, text/javascript, */*; q=0.01",
-  "Accept-Language":     "es-MX,es;q=0.9,en;q=0.8",
-  "Content-Type":        "application/json",
-  "Origin":              "https://compranetv2.sonora.gob.mx",
-  "Referer":             "https://compranetv2.sonora.gob.mx/inicio/portal-licitaciones",
+// Headers exactos que usa el Angular getHeaders() — sin Authorization
+const HEADERS_PUBLIC = {
+  "Content-Type":              "application/json",
+  "Access-Control-Allow-Origin":  "*",
+  "Access-Control-Allow-Methods": "GET,POST,OPTIONS,DELETE,PUT",
+  "Access-Control-Allow-Headers": "Content-Type",
 };
 
+// Headers con JWT para el endpoint administrativo
+const headersWithToken = (token) => ({
+  "Content-Type":   "application/json",
+  "Authorization":  `Bearer ${token}`,
+  "Access-Control-Allow-Origin":  "*",
+  "Access-Control-Allow-Methods": "GET,POST,OPTIONS,DELETE,PUT",
+  "Access-Control-Allow-Headers": "Content-Type",
+});
+
 const HEADERS_FORM = {
-  "User-Agent":          UA,
-  "Accept":              "application/json, text/javascript, */*; q=0.01",
-  "Accept-Language":     "es-MX,es;q=0.9,en;q=0.8",
-  "Content-Type":        "application/x-www-form-urlencoded; charset=UTF-8",
-  "X-Requested-With":    "XMLHttpRequest",
-  "Referer":             `${OLD_BASE}/portal`,
-  "Origin":              OLD_BASE,
+  "User-Agent":       UA,
+  "Accept":           "application/json, text/javascript, */*; q=0.01",
+  "Content-Type":     "application/x-www-form-urlencoded; charset=UTF-8",
+  "X-Requested-With": "XMLHttpRequest",
+  "Referer":          `${OLD_BASE}/portal`,
+  "Origin":           OLD_BASE,
 };
 
 // ── fetch con timeout ─────────────────────────────────────────────────────────
-function timedFetch(url, opts = {}, ms = 9000) {
+function timedFetch(url, opts = {}, ms = 12000) {
   const ac = new AbortController();
   const id = setTimeout(() => ac.abort(), ms);
   return fetch(url, { ...opts, signal: ac.signal }).finally(() => clearTimeout(id));
@@ -42,6 +49,9 @@ function timedFetch(url, opts = {}, ms = 9000) {
 // ── normalizar fecha ──────────────────────────────────────────────────────────
 function normDate(s) {
   if (!s) return null;
+  // YYYY-MM-DD HH:MM:SS → YYYY-MM-DD
+  const iso = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (iso) return iso[1];
   // MM/DD/YYYY → YYYY-MM-DD
   const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (m) return `${m[3]}-${m[1].padStart(2,"0")}-${m[2].padStart(2,"0")}`;
@@ -49,8 +59,26 @@ function normDate(s) {
   return isNaN(d) ? s : d.toISOString().slice(0, 10);
 }
 
-// ── normalizar registros del API v2 ──────────────────────────────────────────
-function fromV2(d, i) {
+// ── normalizar registro del endpoint /api/proveedores/obtenerProcedimientos ───
+function fromPortal(d) {
+  return {
+    id:               String(d.id_procedimiento_administrativo),
+    numero:           d.numero_procedimiento || "—",
+    titulo:           d.descripcion_concepto_contratacion || "—",
+    dependencia:      d.nombre_unidad_responsable || d.nombre_unidad_compradora || "—",
+    fechaPublicacion: normDate(d.fecha_publicacion),
+    fechaLimite:      normDate(d.fecha_limite_presentacion || d.fecha_limite || null),
+    estatus:          d.nombre_estatus_procedimiento || "—",
+    modalidad:        d.nombre_modalidad || "—",
+    tipo:             d.nombre_procedimiento || "—",
+    caracter:         d.nombre_caracter_licitacion || null,
+    monto:            d.monto_maximo || d.monto_estimado || null,
+    fuente:           "v2-portal",
+  };
+}
+
+// ── normalizar registro del endpoint /api/procedimientos/buscarProcedimientosAdministrativos ─
+function fromV2Admin(d, i) {
   return {
     id:               String(d.id || d.numeroProcedimiento || i),
     numero:           d.numeroProcedimiento || d.numero  || "—",
@@ -61,29 +89,31 @@ function fromV2(d, i) {
     estatus:          d.estatus?.descripcion || d.estatus || "Vigente",
     modalidad:        d.tipoModalidad?.descripcion || d.modalidad || "—",
     tipo:             d.tipoProcedimiento?.descripcion || d.tipo    || "—",
+    caracter:         null,
     monto:            d.montoMaximo || d.montoEstimado || null,
-    fuente:           "v2",
+    fuente:           "v2-admin",
   };
 }
 
-// ── normalizar filas del DataTables JSON del portal viejo ────────────────────
-function fromDTRow(d, i) {
+// ── normalizar fila CSV ───────────────────────────────────────────────────────
+function fromCSVRow(d, i) {
   return {
-    id:               String(d.ID || i),
-    numero:           d.NoLicitacion || "—",
-    titulo:           d.Concepto     || "—",
-    dependencia:      d.Dependencia  || "—",
-    fechaPublicacion: normDate(d.Fecha),
-    fechaLimite:      null,
-    estatus:          d.Estatus      || "—",
-    modalidad:        d.Procedimiento || "—",
-    tipo:             d.Tipo         || "—",
+    id:               `csv-${i}`,
+    numero:           d["Numero Licitacion"]      || "—",
+    titulo:           d["Concepto del Contrato"]  || "—",
+    dependencia:      d["Dependencia"]             || "—",
+    fechaPublicacion: normDate(d["Fecha de Publicacion"]),
+    fechaLimite:      normDate(d["Fecha Limite de Inscripcion"]),
+    estatus:          d["Estatus"]                 || "—",
+    modalidad:        d["Procedimiento"]           || "—",
+    tipo:             d["Tipo de Licitacion"]      || "—",
+    caracter:         null,
     monto:            null,
-    fuente:           "portal-v1",
+    fuente:           "portal-v1-csv",
   };
 }
 
-// ── parsear CSV robusto (maneja campos con comas y saltos dentro de comillas) ─
+// ── parsear CSV robusto ───────────────────────────────────────────────────────
 function parseCSV(raw) {
   const lines = [];
   let cur = "", inQ = false;
@@ -93,8 +123,7 @@ function parseCSV(raw) {
       if (inQ && raw[i + 1] === '"') { cur += '"'; i++; }
       else inQ = !inQ;
     } else if (ch === "\n" && !inQ) {
-      lines.push(cur);
-      cur = "";
+      lines.push(cur); cur = "";
     } else {
       cur += ch;
     }
@@ -106,7 +135,7 @@ function parseCSV(raw) {
     let f = "", inField = false;
     for (let i = 0; i < line.length; i++) {
       const ch = line[i];
-      if (ch === '"' && !inField) { inField = true; }
+      if (ch === '"' && !inField) inField = true;
       else if (ch === '"' && inField) {
         if (line[i + 1] === '"') { f += '"'; i++; }
         else inField = false;
@@ -117,11 +146,12 @@ function parseCSV(raw) {
     return fields;
   };
 
-  const [headerLine, ...dataLines] = lines.filter((l) => l.trim());
-  const headers = toFields(headerLine).map((h) => h.trim());
+  const [headerLine, ...dataLines] = lines.filter(l => l.trim());
+  if (!headerLine) return [];
+  const headers = toFields(headerLine).map(h => h.trim());
   return dataLines
-    .filter((l) => l.trim())
-    .map((line) => {
+    .filter(l => l.trim())
+    .map(line => {
       const vals = toFields(line);
       const obj = {};
       headers.forEach((h, i) => { obj[h] = vals[i]?.trim() ?? ""; });
@@ -129,23 +159,41 @@ function parseCSV(raw) {
     });
 }
 
-function fromCSVRow(d, i) {
-  return {
-    id:               `csv-${i}`,
-    numero:           d["Numero Licitacion"]   || "—",
-    titulo:           d["Concepto del Contrato"] || "—",
-    dependencia:      d["Dependencia"]          || "—",
-    fechaPublicacion: normDate(d["Fecha de Publicacion"]),
-    fechaLimite:      normDate(d["Fecha Limite de Inscripcion"]),
-    estatus:          d["Estatus"]              || "—",
-    modalidad:        d["Procedimiento"]        || "—",
-    tipo:             d["Tipo de Licitacion"]   || "—",
-    monto:            null,
-    fuente:           "portal-v1-csv",
+// ── Strategy 1: endpoint público del portal v2 (SIN autenticación) ────────────
+// Este es el mismo endpoint que usa el Angular en /inicio/portal-licitaciones
+async function tryV2Portal() {
+  // Traer VIGENTE (estatus_procedimiento: 2) y todos los tipos
+  const body = {
+    unidad_responsable:      null,
+    concepto_contratacion:   null,
+    no_licitacion:           null,
+    tipo_licitacion:         null,   // null = todos (LP + LS)
+    tipo_procedimiento:      null,
+    estatus_procedimiento:   2,      // 2 = VIGENTE
+    fecha_inicial:           null,
+    fecha_final:             null,
+    page:                    "1",
+    pageSize:                "500",
   };
+
+  try {
+    const res = await timedFetch(
+      `${V2_API}/api/proveedores/obtenerProcedimientos`,
+      { method: "POST", headers: HEADERS_PUBLIC, body: JSON.stringify(body) },
+      12000
+    );
+    if (!res.ok) return null;
+    const json = await res.json().catch(() => null);
+    if (!json?.datos?.data?.length) return null;
+
+    const rows = json.datos.data.map(fromPortal);
+    return { rows, fuente: "api-v2-portal", total: json.datos.total || rows.length };
+  } catch {
+    return null;
+  }
 }
 
-// ── Strategy 1: API v2 con JWT ────────────────────────────────────────────────
+// ── Strategy 2: endpoint administrativo con JWT (más datos, si hay token) ─────
 async function tryV2WithToken(token) {
   const bodies = [
     { pagina: 1, registrosPorPagina: 200, estatus: "VIGENTE" },
@@ -156,123 +204,59 @@ async function tryV2WithToken(token) {
     try {
       const res = await timedFetch(
         `${V2_API}/api/procedimientos/buscarProcedimientosAdministrativos`,
-        {
-          method:  "POST",
-          headers: {
-            ...HEADERS_JSON,
-            "Authorization": `Bearer ${token}`,
-          },
-          body: JSON.stringify(body),
-        }
+        { method: "POST", headers: headersWithToken(token), body: JSON.stringify(body) }
       );
       if (!res.ok) continue;
       const json = await res.json().catch(() => null);
       if (!json) continue;
       const arr = json.datos || json.data || json.results || (Array.isArray(json) ? json : null);
-      if (arr?.length > 0) return { rows: arr.map(fromV2), fuente: "api-v2-jwt", total: arr.length };
+      if (arr?.length > 0)
+        return { rows: arr.map(fromV2Admin), fuente: "api-v2-jwt", total: arr.length };
     } catch { /* timeout o red */ }
   }
   return null;
 }
 
-// ── Strategy 2: DataTables JSON del portal público ────────────────────────────
-// Construye el body DataTables server-side con los 9 columnas del portal
-function buildDTBody(options = {}) {
-  const {
-    estatus    = "",
-    tipo       = "",       // LicitacionPublica | LicitacionSimplificada | ""
-    start      = 0,
-    length     = 200,
-  } = options;
+// ── Strategy 3: CSV histórico del portal público (último recurso) ─────────────
+const fmtDate = (d) =>
+  `${String(d.getMonth()+1).padStart(2,"0")}%2F${String(d.getDate()).padStart(2,"0")}%2F${d.getFullYear()}`;
 
-  const cols = [
-    { data: "Estatus",      name: "Estatus",      search: estatus },
-    { data: "NoLicitacion", name: "NoLicitacion",  search: "" },
-    { data: "Concepto",     name: "Concepto",      search: "" },
-    { data: "Dependencia",  name: "Dependencia",   search: "" },
-    { data: "Fecha",        name: "Fecha",         search: "" },
-    { data: null,           name: "",              searchable: false, orderable: false, search: "" },
-    { data: "ID",           name: "ID",            search: tipo },
-    { data: "Tipo",         name: "Tipo",          search: "" },
-    { data: "Procedimiento",name: "Procedimiento", searchable: false, search: "false" },
-  ];
-
-  const params = new URLSearchParams();
-  params.set("draw", "1");
-  params.set("start", String(start));
-  params.set("length", String(length));
-  params.set("search[value]", "");
-  params.set("search[regex]", "false");
-  params.set("order[0][column]", "4");
-  params.set("order[0][dir]", "desc");
-
-  cols.forEach((col, i) => {
-    params.set(`columns[${i}][data]`,            String(col.data ?? "null"));
-    params.set(`columns[${i}][name]`,            col.name);
-    params.set(`columns[${i}][searchable]`,      String(col.searchable !== false));
-    params.set(`columns[${i}][orderable]`,       String(col.orderable !== false));
-    params.set(`columns[${i}][search][value]`,   col.search ?? "");
-    params.set(`columns[${i}][search][regex]`,   "false");
-  });
-
-  return params.toString();
-}
-
-async function tryDataTables() {
-  // Pedir todos los tipos en paralelo
-  const requests = [
-    timedFetch(`${OLD_BASE}/Portal/LoadData?first=True`, { method: "POST", headers: HEADERS_FORM, body: buildDTBody({ tipo: "LicitacionPublica" }) }),
-    timedFetch(`${OLD_BASE}/Portal/LoadData?first=True`, { method: "POST", headers: HEADERS_FORM, body: buildDTBody({ tipo: "LicitacionSimplificada" }) }),
-    timedFetch(`${OLD_BASE}/Portal/LoadData?first=True`, { method: "POST", headers: HEADERS_FORM, body: buildDTBody({ tipo: "" }) }),
-  ];
-
-  const rows = [];
-  const seen = new Set();
-
-  for (const req of requests) {
-    try {
-      const res = await req;
-      if (!res.ok) continue;
-      const json = await res.json().catch(() => null);
-      if (!json?.data) continue;
-      for (const d of json.data) {
-        if (!seen.has(d.ID)) { seen.add(d.ID); rows.push(fromDTRow(d, rows.length)); }
-      }
-    } catch { /* timeout */ }
-  }
-
-  if (rows.length > 0) return { rows, fuente: "portal-v1-dt", total: rows.length };
-  return null;
-}
-
-// ── Strategy 3: CSV histórico del portal público ──────────────────────────────
-async function tryCSV() {
-  // Pedir últimos 18 meses
-  const now    = new Date();
-  const cutoff = new Date(now.getFullYear() - 1, now.getMonth() - 6, 1);
-  const fmt = (d) =>
-    `${String(d.getMonth()+1).padStart(2,"0")}%2F${String(d.getDate()).padStart(2,"0")}%2F${d.getFullYear()}`;
-
-  const url = `${OLD_BASE}/Portal/ExportToCSV?UR=&lic=&status=&cpto=&fecI=${fmt(cutoff)}&fecF=${fmt(now)}&proc=&noexp=`;
-
+async function fetchCSVRange(from, to) {
+  const url = `${OLD_BASE}/Portal/ExportToCSV?UR=&lic=&status=&cpto=&fecI=${fmtDate(from)}&fecF=${fmtDate(to)}&proc=&noexp=`;
   try {
-    const res = await timedFetch(url, { headers: { "User-Agent": UA, "Referer": `${OLD_BASE}/portal` } });
-    if (!res.ok) return null;
+    const res = await timedFetch(url, { headers: { "User-Agent": UA, "Referer": `${OLD_BASE}/portal` } }, 12000);
+    if (!res.ok) return [];
     const text = await res.text();
-    if (!text || text.length < 100) return null;
-
-    const records = parseCSV(text);
-    if (records.length === 0) return null;
-
-    // Ordenar por fecha desc
-    const rows = records
-      .map(fromCSVRow)
-      .sort((a, b) => (b.fechaPublicacion || "").localeCompare(a.fechaPublicacion || ""));
-
-    return { rows, fuente: "portal-v1-csv", total: rows.length };
+    if (!text || text.length < 100) return [];
+    return parseCSV(text).map(fromCSVRow);
   } catch {
-    return null;
+    return [];
   }
+}
+
+async function tryCSV() {
+  const now = new Date();
+  const ranges = [
+    [new Date(2022, 0, 1), new Date(2023, 11, 31)],
+    [new Date(2024, 0, 1), now],
+  ];
+
+  const chunks = await Promise.allSettled(ranges.map(([from, to]) => fetchCSVRange(from, to)));
+
+  const seen = new Set();
+  const allRows = [];
+  for (const chunk of chunks) {
+    if (chunk.status !== "fulfilled") continue;
+    for (const row of chunk.value) {
+      const key = row.numero !== "—" ? row.numero : `${row.titulo}|${row.fechaPublicacion}`;
+      if (!seen.has(key)) { seen.add(key); allRows.push(row); }
+    }
+  }
+
+  if (allRows.length === 0) return null;
+
+  allRows.sort((a, b) => (b.fechaPublicacion || "").localeCompare(a.fechaPublicacion || ""));
+  return { rows: allRows, fuente: "portal-v1-csv", total: allRows.length };
 }
 
 // ── handler ───────────────────────────────────────────────────────────────────
@@ -283,17 +267,15 @@ export default async function handler(req, res) {
 
   let result = null;
 
-  // 1. Si hay JWT → intentar v2 primero
-  if (token) {
+  // 1. Endpoint público del portal v2 — VIGENTE sin autenticación
+  result = await tryV2Portal().catch(() => null);
+
+  // 2. Si hay JWT → endpoint administrativo (puede complementar o reemplazar)
+  if (!result && token) {
     result = await tryV2WithToken(token).catch(() => null);
   }
 
-  // 2. DataTables JSON (portal v1 público)
-  if (!result) {
-    result = await tryDataTables().catch(() => null);
-  }
-
-  // 3. CSV histórico (portal v1 público)
+  // 3. CSV histórico del portal v1 como último recurso
   if (!result) {
     result = await tryCSV().catch(() => null);
   }
