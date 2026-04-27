@@ -64,6 +64,73 @@ const fmtSize  = (b) => b < 1e6 ? (b/1024).toFixed(0)+" KB" : (b/1e6).toFixed(1)
 const fmtDate  = (d) => new Date(d).toLocaleDateString("es-AR", {day:"2-digit",month:"short",year:"numeric"});
 const scoreCol = (s) => s >= 70 ? "#10b981" : s >= 45 ? "#f59e0b" : "#ef4444";
 
+// ─── RATE LIMIT (licitaciones, 3 usos / 24 h) ────────────────────────────────
+const SK_LICIT_RATE  = "licitaia_v4_licit_rate";
+const LICIT_MAX_USOS = 3;
+const LICIT_WINDOW   = 24 * 60 * 60 * 1000; // 24 h en ms
+
+function getRateLimit() {
+  try {
+    const d = JSON.parse(localStorage.getItem(SK_LICIT_RATE) || "null");
+    if (!d) return { usos: 0, ultima: null, resetAt: null };
+    if (d.resetAt && Date.now() > d.resetAt) return { usos: 0, ultima: null, resetAt: null };
+    return d;
+  } catch { return { usos: 0, ultima: null, resetAt: null }; }
+}
+function consumeRateLimit(current) {
+  const next = {
+    usos:    current.usos + 1,
+    ultima:  Date.now(),
+    resetAt: current.resetAt || (Date.now() + LICIT_WINDOW),
+  };
+  try { localStorage.setItem(SK_LICIT_RATE, JSON.stringify(next)); } catch {}
+  return next;
+}
+
+// ─── SCORING EMPRESA vs LICITACIÓN ───────────────────────────────────────────
+const SECTOR_KW = {
+  "Tecnología":   ["sistemas","software","hardware","tecnología","informática","digital","cómputo","red","aplicación","plataforma","servicio de ti","desarrollo","ciberseguridad"],
+  "Construcción": ["obra","construcción","infraestructura","edificio","puente","carretera","rehabilitación","mantenimiento","remodelación","pavimento","urbanización"],
+  "Consultoría":  ["consultoría","asesoría","capacitación","estudio","diagnóstico","evaluación","análisis","planeación"],
+  "Salud":        ["médico","hospital","salud","medicamento","clínico","sanitario","farmacéutico","equipo médico","insumo"],
+  "Educación":    ["escuela","educativo","universidad","académico","didáctico","enseñanza","formación","bachillerato"],
+  "Logística":    ["logística","transporte","flete","distribución","almacén","entrega","paquetería"],
+  "Servicios":    ["servicio","mantenimiento","limpieza","vigilancia","seguridad","jardinería","aseo","operación"],
+  "Manufactura":  ["fabricación","manufactura","producción","ensamble","industria","suministro"],
+  "Seguridad":    ["seguridad","vigilancia","custodia","protección","guardias","resguardo"],
+  "Otro":         [],
+};
+
+function scoreEmpresa(licit, empresa) {
+  if (!empresa) return null;
+  const texto = `${licit.titulo} ${licit.dependencia} ${licit.tipo} ${licit.modalidad}`.toLowerCase();
+  let score = 40;
+
+  // Sector match (hasta +30)
+  const kws = SECTOR_KW[empresa.sector] || [];
+  const sectorHits = kws.filter((k) => texto.includes(k)).length;
+  score += Math.min(30, sectorHits * 8);
+
+  // Capacidades (hasta +18)
+  const capTokens = (empresa.capacidades || "").toLowerCase().split(/[\s,;.]+/).filter((t) => t.length > 4);
+  score += Math.min(18, capTokens.filter((t) => texto.includes(t)).length * 6);
+
+  // Certificaciones (hasta +8)
+  const certTokens = (empresa.certificaciones || "").toLowerCase().split(/[\s,;.]+/).filter((t) => t.length > 3);
+  score += Math.min(8, certTokens.filter((t) => texto.includes(t)).length * 4);
+
+  // Experiencia (hasta +4)
+  const expTokens = (empresa.experiencia || "").toLowerCase().split(/[\s,;.]+/).filter((t) => t.length > 4);
+  score += Math.min(4, expTokens.filter((t) => texto.includes(t)).length * 2);
+
+  return Math.min(100, Math.max(0, Math.round(score)));
+}
+
+function scoreColor(s) {
+  if (s === null) return "var(--ink3)";
+  return s >= 70 ? "var(--green)" : s >= 45 ? "var(--yellow)" : "var(--red)";
+}
+
 const TIPOS = [
   { id:"viabilidad", icon:"🎯", label:"Viabilidad",   desc:"¿Vale la pena presentarse? Score + veredicto." },
   { id:"clausulas",  icon:"📌", label:"Cláusulas",    desc:"Cláusulas clave con fuente exacta." },
@@ -223,6 +290,39 @@ tr:nth-child(even) td{background:rgba(255,255,255,0.02)}
 .empty-state{text-align:center;padding:56px 20px;color:var(--ink3)}
 .empty-state .ei{font-size:38px;margin-bottom:13px}
 .empty-state .et{font-family:var(--display);font-size:18px;color:var(--ink2);margin-bottom:6px}
+
+/* ── DASHBOARD LICITACIONES ── */
+.dash-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:20px}
+.dash-filters{display:flex;align-items:center;gap:8px;flex:1;flex-wrap:wrap}
+.dash-sel{background:var(--surface);border:1px solid var(--border2);border-radius:7px;padding:7px 10px;font-family:var(--sans);font-size:12.5px;color:var(--ink);outline:none;transition:border-color 0.15s;height:34px}
+.dash-sel:focus{border-color:var(--blue)}
+.dash-inp{background:var(--surface);border:1px solid var(--border2);border-radius:7px;padding:7px 10px;font-family:var(--sans);font-size:12.5px;color:var(--ink);outline:none;transition:border-color 0.15s;width:148px;height:34px}
+.dash-inp:focus{border-color:var(--blue)}
+.dash-rate{font-family:var(--mono);font-size:11px;color:var(--ink3);white-space:nowrap}
+.dash-last{font-family:var(--mono);font-size:10px;color:var(--ink3)}
+.lic-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:14px}
+.lic-card{background:var(--paper);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px;transition:border-color 0.15s;cursor:default}
+.lic-card:hover{border-color:var(--blue-border)}
+.lic-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.lic-num{font-family:var(--mono);font-size:10px;color:var(--ink3);white-space:nowrap;padding-top:2px}
+.lic-titulo{font-family:var(--display);font-size:14px;font-weight:600;line-height:1.4;color:var(--ink);flex:1}
+.lic-dep{font-family:var(--mono);font-size:11px;color:var(--blue);margin-top:2px}
+.lic-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px}
+.lic-badge{font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:5px;border:1px solid;white-space:nowrap}
+.lic-badge.vigente{background:rgba(16,185,129,0.1);border-color:rgba(16,185,129,0.25);color:var(--green)}
+.lic-badge.otro{background:var(--surface);border-color:var(--border2);color:var(--ink3)}
+.lic-score-row{display:flex;align-items:center;gap:8px;margin-top:4px;padding-top:10px;border-top:1px solid var(--border)}
+.lic-score-num{font-family:var(--display);font-size:22px;font-weight:700;line-height:1;min-width:34px}
+.lic-score-bar-wrap{flex:1;height:5px;background:var(--border);border-radius:3px;overflow:hidden}
+.lic-score-bar{height:100%;border-radius:3px;transition:width 0.7s ease}
+.lic-score-lbl{font-family:var(--mono);font-size:10px;color:var(--ink3)}
+.lic-date{font-family:var(--mono);font-size:10px;color:var(--ink3);display:flex;align-items:center;gap:4px}
+.dash-empty{text-align:center;padding:60px 20px;color:var(--ink3)}
+.dash-empty .de-icon{font-size:40px;margin-bottom:14px}
+.dash-empty .de-title{font-family:var(--display);font-size:18px;color:var(--ink2);margin-bottom:6px}
+.dash-empty .de-sub{font-size:13px;line-height:1.6}
+.dash-fuente{font-family:var(--mono);font-size:10px;color:var(--ink3);padding:4px 10px;background:var(--surface);border:1px solid var(--border);border-radius:5px}
+.rate-warn{background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:9px;padding:11px 15px;font-size:13px;color:var(--yellow);margin-bottom:18px;display:flex;align-items:center;gap:8px}
 
 /* ── LOGIN ── */
 .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:20px}
@@ -518,6 +618,15 @@ export default function LicitaIA() {
   const [toast,      setToast]     = useState(null);
   const fileRef = useRef(null);
 
+  // ── Dashboard licitaciones ──────────────────────────────────────────────────
+  const [licitaciones,  setLicitaciones]  = useState([]);
+  const [licitLoading,  setLicitLoading]  = useState(false);
+  const [licitError,    setLicitError]    = useState(null);
+  const [licitMeta,     setLicitMeta]     = useState(null); // { fuente, total, timestamp, mensaje }
+  const [rate,          setRate]          = useState(()=>{ try { return getRateLimit(); } catch { return { usos:0, ultima:null, resetAt:null }; } });
+  const [filtroDepe,    setFiltroDepe]    = useState("");
+  const [filtroFecha,   setFiltroFecha]   = useState("");
+
   // Verificar sesión al cargar
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -541,6 +650,38 @@ export default function LicitaIA() {
     store.set(SK_EMPRESA, data); setEmpresa(data);
     showToast("✓ Perfil guardado"); setView("analizar");
   },[showToast]);
+
+  // ── Fetch licitaciones (con rate limit) ──────────────────────────────────
+  const fetchLicitaciones = useCallback(async ()=>{
+    const current = getRateLimit();
+    if (current.usos >= LICIT_MAX_USOS) {
+      showToast("⚠ Límite de actualizaciones alcanzado. Espera 24 h.");
+      return;
+    }
+    setLicitLoading(true);
+    setLicitError(null);
+    const next = consumeRateLimit(current);
+    setRate(next);
+    try {
+      const res = await fetch("/api/licitaciones");
+      if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e?.error || `Error ${res.status}`); }
+      const body = await res.json();
+      setLicitaciones(body.licitaciones || []);
+      setLicitMeta({ fuente: body.fuente, total: body.total, timestamp: body.timestamp, mensaje: body.mensaje });
+    } catch(e) {
+      setLicitError(e.message || "Error desconocido");
+    } finally {
+      setLicitLoading(false);
+    }
+  }, [showToast]);
+
+  // Cargar automáticamente al entrar al dashboard (sin consumir rate si ya hay datos)
+  useEffect(()=>{
+    if (view === "dashboard" && licitaciones.length === 0 && !licitLoading && !licitError) {
+      fetchLicitaciones();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
 
   const acceptFile = useCallback((f)=>{
     if (!f) return;
@@ -605,9 +746,10 @@ export default function LicitaIA() {
           </div>
           <nav>
             {[
-              {id:"analizar", icon:"⚡", label:"Nuevo Análisis"},
-              {id:"historial",icon:"📂", label:"Historial", badge:historial.length||null},
-              {id:"empresa",  icon:"🏢", label:empresa?"Perfil Empresa":"⚠ Configurar Empresa"},
+              {id:"analizar",  icon:"⚡", label:"Nuevo Análisis"},
+              {id:"dashboard", icon:"📋", label:"Licitaciones Sonora", badge:licitaciones.length||null},
+              {id:"historial", icon:"📂", label:"Historial", badge:historial.length||null},
+              {id:"empresa",   icon:"🏢", label:empresa?"Perfil Empresa":"⚠ Configurar Empresa"},
             ].map(n=>(
               <button key={n.id} className={`nb ${view===n.id?"on":""}`} onClick={()=>setView(n.id)}>
                 <span>{n.icon}</span>{n.label}
@@ -762,6 +904,179 @@ export default function LicitaIA() {
           {view==="empresa" && (
             <EmpresaForm empresa={empresa} onSave={handleSaveEmpresa} onCancel={empresa?()=>setView("analizar"):null}/>
           )}
+
+          {view==="dashboard" && (() => {
+            const usosDisp = Math.max(0, LICIT_MAX_USOS - rate.usos);
+            const limitado = usosDisp === 0;
+            const fmtTs = (ts) => ts ? new Date(ts).toLocaleString("es-MX",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}) : "—";
+
+            // Dependencias únicas para el filtro
+            const dependencias = [...new Set(licitaciones.map(l=>l.dependencia).filter(Boolean))].sort();
+
+            // Aplicar filtros
+            const visibles = licitaciones
+              .filter(l => !filtroDepe || l.dependencia === filtroDepe)
+              .filter(l => !filtroFecha || (l.fechaPublicacion && l.fechaPublicacion >= filtroFecha))
+              .map(l => ({ ...l, score: scoreEmpresa(l, empresa) }))
+              .sort((a,b) => {
+                // Primero por fecha desc, luego por score desc
+                if (b.fechaPublicacion && a.fechaPublicacion) {
+                  const df = b.fechaPublicacion.localeCompare(a.fechaPublicacion);
+                  if (df !== 0) return df;
+                }
+                return (b.score ?? 0) - (a.score ?? 0);
+              });
+
+            return (
+              <div className="page">
+                <div className="pg-title">Licitaciones Sonora</div>
+                <div className="pg-sub">
+                  Licitaciones vigentes de CompraNet Sonora v2 · Score de relevancia según tu perfil de empresa.
+                </div>
+
+                {!empresa && (
+                  <div className="warn-banner" style={{marginBottom:18}}>
+                    ⚠️ Sin perfil — se muestran sin score.{" "}
+                    <span style={{color:"var(--blue)",cursor:"pointer",fontWeight:600,marginLeft:4}} onClick={()=>setView("empresa")}>Configurar →</span>
+                  </div>
+                )}
+
+                {limitado && (
+                  <div className="rate-warn">
+                    ⏳ Límite de actualizaciones alcanzado. Próximo reinicio: {fmtTs(rate.resetAt)}.
+                  </div>
+                )}
+
+                {/* ── Toolbar ── */}
+                <div className="dash-toolbar">
+                  <div className="dash-filters">
+                    <select className="dash-sel" value={filtroDepe} onChange={e=>setFiltroDepe(e.target.value)}>
+                      <option value="">Todas las dependencias</option>
+                      {dependencias.map(d=><option key={d} value={d}>{d}</option>)}
+                    </select>
+                    <input type="date" className="dash-inp" value={filtroFecha} onChange={e=>setFiltroFecha(e.target.value)} title="Publicadas desde"/>
+                    {(filtroDepe||filtroFecha) && (
+                      <button className="btn btn-ghost btn-sm" onClick={()=>{setFiltroDepe("");setFiltroFecha("");}}>✕ Limpiar</button>
+                    )}
+                  </div>
+
+                  <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3}}>
+                    <button
+                      className="btn btn-blue btn-sm"
+                      disabled={licitLoading || limitado}
+                      onClick={fetchLicitaciones}
+                      style={{gap:6}}
+                    >
+                      {licitLoading ? "Cargando…" : "↺ Actualizar"}
+                    </button>
+                    <span className="dash-rate">Usos disponibles: {usosDisp} de {LICIT_MAX_USOS}</span>
+                    {rate.ultima && <span className="dash-last">Últ. actualización: {fmtTs(rate.ultima)}</span>}
+                  </div>
+                </div>
+
+                {/* ── Estado: cargando ── */}
+                {licitLoading && (
+                  <div className="loading" style={{padding:"48px 0"}}>
+                    <div className="spinner"/>
+                    <div className="ld-msg">Abriendo portal CompraNet Sonora…</div>
+                    <div className="ld-sub">Puppeteer navegando · puede tardar ~15 s</div>
+                  </div>
+                )}
+
+                {/* ── Estado: error ── */}
+                {!licitLoading && licitError && (
+                  <div className="err-box" style={{marginBottom:18}}>✗ {licitError}</div>
+                )}
+
+                {/* ── Fuente + conteo ── */}
+                {!licitLoading && licitaciones.length > 0 && (
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+                    <span style={{fontFamily:"var(--mono)",fontSize:11,color:"var(--ink3)"}}>
+                      {visibles.length} de {licitaciones.length} licitaciones
+                      {filtroDepe || filtroFecha ? " (filtradas)" : ""}
+                    </span>
+                    {licitMeta?.fuente && <span className="dash-fuente">fuente: {licitMeta.fuente}</span>}
+                  </div>
+                )}
+
+                {/* ── Grid de tarjetas ── */}
+                {!licitLoading && visibles.length > 0 && (
+                  <div className="lic-grid">
+                    {visibles.map(l => {
+                      const sc = l.score;
+                      const esVigente = !l.estatus || l.estatus.toLowerCase().includes("vigente") || l.estatus === "—";
+                      return (
+                        <div key={l.id} className="lic-card">
+                          <div className="lic-head">
+                            <div style={{flex:1}}>
+                              <div className="lic-titulo">{l.titulo}</div>
+                              <div className="lic-dep">{l.dependencia}</div>
+                            </div>
+                            <div className="lic-num">#{l.numero}</div>
+                          </div>
+
+                          <div className="lic-meta">
+                            <span className={`lic-badge ${esVigente?"vigente":"otro"}`}>{l.estatus}</span>
+                            {l.modalidad && l.modalidad !== "—" && <span className="lic-badge otro">{l.modalidad}</span>}
+                            {l.tipo && l.tipo !== "—" && <span className="lic-badge otro">{l.tipo}</span>}
+                          </div>
+
+                          <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
+                            {l.fechaPublicacion && (
+                              <div className="lic-date">📅 Pub: {l.fechaPublicacion}</div>
+                            )}
+                            {l.fechaLimite && (
+                              <div className="lic-date">⏰ Límite: {l.fechaLimite}</div>
+                            )}
+                            {l.monto && (
+                              <div className="lic-date">💰 {Number(l.monto).toLocaleString("es-MX",{style:"currency",currency:"MXN",maximumFractionDigits:0})}</div>
+                            )}
+                          </div>
+
+                          {/* Score de relevancia */}
+                          {sc !== null && (
+                            <div className="lic-score-row">
+                              <div className="lic-score-num" style={{color:scoreColor(sc)}}>{sc}</div>
+                              <div style={{flex:1}}>
+                                <div className="lic-score-bar-wrap">
+                                  <div className="lic-score-bar" style={{width:`${sc}%`,background:scoreColor(sc)}}/>
+                                </div>
+                                <div className="lic-score-lbl" style={{marginTop:3}}>
+                                  {sc>=70?"Alta relevancia":sc>=45?"Relevancia media":"Baja relevancia"}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* ── Sin resultados ── */}
+                {!licitLoading && !licitError && licitaciones.length > 0 && visibles.length === 0 && (
+                  <div className="dash-empty">
+                    <div className="de-icon">🔍</div>
+                    <div className="de-title">Sin resultados con estos filtros</div>
+                    <div className="de-sub">
+                      <button className="btn btn-ghost btn-sm" onClick={()=>{setFiltroDepe("");setFiltroFecha("");}}>Limpiar filtros</button>
+                    </div>
+                  </div>
+                )}
+
+                {!licitLoading && !licitError && licitaciones.length === 0 && (
+                  <div className="dash-empty">
+                    <div className="de-icon">📋</div>
+                    <div className="de-title">Sin licitaciones cargadas</div>
+                    <div className="de-sub">
+                      {licitMeta?.mensaje || "Presioná Actualizar para extraer las licitaciones vigentes del portal CompraNet Sonora."}
+                      {limitado && <><br/><br/>Límite de usos alcanzado. Próximo reinicio: {fmtTs(rate.resetAt)}.</>}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </main>
       </div>
       {toast && <div className="toast">{toast}</div>}
