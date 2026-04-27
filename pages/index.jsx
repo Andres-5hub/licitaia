@@ -622,10 +622,12 @@ export default function LicitaIA() {
   const [licitaciones,  setLicitaciones]  = useState([]);
   const [licitLoading,  setLicitLoading]  = useState(false);
   const [licitError,    setLicitError]    = useState(null);
-  const [licitMeta,     setLicitMeta]     = useState(null); // { fuente, total, timestamp, mensaje }
+  const [licitMeta,     setLicitMeta]     = useState(null);
   const [rate,          setRate]          = useState(()=>{ try { return getRateLimit(); } catch { return { usos:0, ultima:null, resetAt:null }; } });
   const [filtroDepe,    setFiltroDepe]    = useState("");
   const [filtroFecha,   setFiltroFecha]   = useState("");
+  const [v2Token,       setV2Token]       = useState(()=>{ try { return localStorage.getItem("licitaia_v4_v2token")||""; } catch { return ""; } });
+  const [showToken,     setShowToken]     = useState(false);
 
   // Verificar sesión al cargar
   useEffect(() => {
@@ -663,11 +665,13 @@ export default function LicitaIA() {
     const next = consumeRateLimit(current);
     setRate(next);
     try {
-      const res = await fetch("/api/licitaciones");
+      const tok = (() => { try { return localStorage.getItem("licitaia_v4_v2token")||""; } catch { return ""; } })();
+      const url = tok ? `/api/licitaciones?token=${encodeURIComponent(tok)}` : "/api/licitaciones";
+      const res = await fetch(url);
       if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e?.error || `Error ${res.status}`); }
       const body = await res.json();
       setLicitaciones(body.licitaciones || []);
-      setLicitMeta({ fuente: body.fuente, total: body.total, timestamp: body.timestamp, mensaje: body.mensaje });
+      setLicitMeta({ fuente: body.fuente, total: body.total, timestamp: body.timestamp, mensaje: body.mensaje, conToken: body.conToken });
     } catch(e) {
       setLicitError(e.message || "Error desconocido");
     } finally {
@@ -988,6 +992,40 @@ export default function LicitaIA() {
                   <div className="err-box" style={{marginBottom:18}}>✗ {licitError}</div>
                 )}
 
+                {/* ── Panel de token v2 (colapsable) ── */}
+                <div style={{marginBottom:16}}>
+                  <button className="btn btn-ghost btn-sm" style={{fontSize:11,gap:5}} onClick={()=>setShowToken(t=>!t)}>
+                    🔑 {showToken ? "Ocultar" : "Desbloquear datos v2"} {v2Token?"✓":""}
+                  </button>
+                  {showToken && (
+                    <div className="card" style={{marginTop:10,padding:14}}>
+                      <div style={{fontFamily:"var(--mono)",fontSize:11,color:"var(--ink3)",marginBottom:8}}>
+                        Para ver licitaciones VIGENTES del sistema v2: abrí DevTools en compranetv2.sonora.gob.mx
+                        → Application → LocalStorage → buscar <strong>tk_str</strong> → copiá el valor.
+                      </div>
+                      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                        <input
+                          className="inp"
+                          style={{flex:1,fontSize:12,fontFamily:"var(--mono)"}}
+                          type="password"
+                          placeholder="Pegar token JWT de CompraNet v2..."
+                          value={v2Token}
+                          onChange={e=>{
+                            setV2Token(e.target.value);
+                            try { localStorage.setItem("licitaia_v4_v2token", e.target.value); } catch {}
+                          }}
+                        />
+                        {v2Token && (
+                          <button className="btn-danger" style={{fontSize:11,padding:"5px 10px"}} onClick={()=>{
+                            setV2Token("");
+                            try { localStorage.removeItem("licitaia_v4_v2token"); } catch {}
+                          }}>✕</button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* ── Fuente + conteo ── */}
                 {!licitLoading && licitaciones.length > 0 && (
                   <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,flexWrap:"wrap"}}>
@@ -995,7 +1033,13 @@ export default function LicitaIA() {
                       {visibles.length} de {licitaciones.length} licitaciones
                       {filtroDepe || filtroFecha ? " (filtradas)" : ""}
                     </span>
-                    {licitMeta?.fuente && <span className="dash-fuente">fuente: {licitMeta.fuente}</span>}
+                    {licitMeta?.fuente && (
+                      <span className="dash-fuente">
+                        {licitMeta.fuente === "api-v2-jwt" ? "🟢 CompraNet v2 (vigentes)" :
+                         licitMeta.fuente.includes("csv")  ? "🟡 Portal v1 — histórico" :
+                         licitMeta.fuente.includes("dt")   ? "🟡 Portal v1 — JSON" : licitMeta.fuente}
+                      </span>
+                    )}
                   </div>
                 )}
 
