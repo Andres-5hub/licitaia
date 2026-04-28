@@ -89,39 +89,72 @@ function consumeRateLimit(current) {
 
 // ─── SCORING EMPRESA vs LICITACIÓN ───────────────────────────────────────────
 const SECTOR_KW = {
-  "Tecnología":   ["sistemas","software","hardware","tecnología","informática","digital","cómputo","red","aplicación","plataforma","servicio de ti","desarrollo","ciberseguridad"],
-  "Construcción": ["obra","construcción","infraestructura","edificio","puente","carretera","rehabilitación","mantenimiento","remodelación","pavimento","urbanización"],
-  "Consultoría":  ["consultoría","asesoría","capacitación","estudio","diagnóstico","evaluación","análisis","planeación"],
-  "Salud":        ["médico","hospital","salud","medicamento","clínico","sanitario","farmacéutico","equipo médico","insumo"],
-  "Educación":    ["escuela","educativo","universidad","académico","didáctico","enseñanza","formación","bachillerato"],
-  "Logística":    ["logística","transporte","flete","distribución","almacén","entrega","paquetería"],
-  "Servicios":    ["servicio","mantenimiento","limpieza","vigilancia","seguridad","jardinería","aseo","operación"],
-  "Manufactura":  ["fabricación","manufactura","producción","ensamble","industria","suministro"],
-  "Seguridad":    ["seguridad","vigilancia","custodia","protección","guardias","resguardo"],
+  "Tecnología":   ["sistemas","software","hardware","tecnología","informática","digital","cómputo","red","aplicación","plataforma","ti","desarrollo","ciberseguridad","servidor","base de datos","licencia"],
+  "Construcción": ["obra","construcción","infraestructura","edificio","puente","carretera","rehabilitación","remodelación","pavimento","urbanización","drenaje","alcantarillado","pavimentación"],
+  "Consultoría":  ["consultoría","asesoría","capacitación","estudio","diagnóstico","evaluación","análisis","planeación","consultor","auditoría"],
+  "Salud":        ["médico","hospital","salud","medicamento","clínico","sanitario","farmacéutico","equipo médico","insumo","quirúrgico","laboratorio","ambulancia"],
+  "Educación":    ["escuela","educativo","universidad","académico","didáctico","enseñanza","formación","bachillerato","colegio","material educativo","aula"],
+  "Logística":    ["logística","transporte","flete","distribución","almacén","entrega","paquetería","mudanza","vehículo","vehículos","camión"],
+  "Servicios":    ["servicio","mantenimiento","limpieza","vigilancia","jardinería","aseo","operación","cafetería","fumigación","poda","recolección"],
+  "Manufactura":  ["fabricación","manufactura","producción","ensamble","industria","suministro","material","acero","metal","maquinaria"],
+  "Seguridad":    ["seguridad","vigilancia","custodia","protección","guardias","resguardo","cámaras","video vigilancia","monitoreo"],
   "Otro":         [],
+};
+
+const FACTURACION_TOPES = {
+  "Menos de $500K":  500_000,
+  "$500K – $2M":   2_000_000,
+  "$2M – $10M":   10_000_000,
+  "$10M – $50M":  50_000_000,
+  "Más de $50M":  Infinity,
 };
 
 function scoreEmpresa(licit, empresa) {
   if (!empresa) return null;
-  const texto = `${licit.titulo} ${licit.dependencia} ${licit.tipo} ${licit.modalidad}`.toLowerCase();
-  let score = 40;
+  const texto = `${licit.titulo} ${licit.dependencia} ${licit.tipo} ${licit.modalidad}`.toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "");
+  let score = 0;
 
-  // Sector match (hasta +30)
-  const kws = SECTOR_KW[empresa.sector] || [];
-  const sectorHits = kws.filter((k) => texto.includes(k)).length;
-  score += Math.min(30, sectorHits * 8);
+  // 1. Sector coincide con tipo de licitación (+30)
+  const kws = (SECTOR_KW[empresa.sector] || []).map(k =>
+    k.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""));
+  const sectorHits = kws.filter(k => texto.includes(k)).length;
+  if (sectorHits >= 3) score += 30;
+  else if (sectorHits === 2) score += 22;
+  else if (sectorHits === 1) score += 14;
 
-  // Capacidades (hasta +18)
-  const capTokens = (empresa.capacidades || "").toLowerCase().split(/[\s,;.]+/).filter((t) => t.length > 4);
-  score += Math.min(18, capTokens.filter((t) => texto.includes(t)).length * 6);
+  // 2. Certificaciones relevantes (+20)
+  const certTokens = (empresa.certificaciones || "").toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .split(/[\s,;.]+/).filter(t => t.length > 3);
+  const certHits = certTokens.filter(t => texto.includes(t)).length;
+  if (certHits >= 2) score += 20;
+  else if (certHits === 1) score += 12;
 
-  // Certificaciones (hasta +8)
-  const certTokens = (empresa.certificaciones || "").toLowerCase().split(/[\s,;.]+/).filter((t) => t.length > 3);
-  score += Math.min(8, certTokens.filter((t) => texto.includes(t)).length * 4);
+  // 3. Experiencia en licitaciones similares (+20)
+  const expTokens = (empresa.experiencia || "").toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .split(/[\s,;.]+/).filter(t => t.length > 4);
+  const expHits = expTokens.filter(t => texto.includes(t)).length;
+  if (expHits >= 2) score += 20;
+  else if (expHits === 1) score += 12;
 
-  // Experiencia (hasta +4)
-  const expTokens = (empresa.experiencia || "").toLowerCase().split(/[\s,;.]+/).filter((t) => t.length > 4);
-  score += Math.min(4, expTokens.filter((t) => texto.includes(t)).length * 2);
+  // 4. Facturación suficiente para el monto (+15)
+  const montoNum = typeof licit.monto === "number" ? licit.monto : null;
+  const tope = FACTURACION_TOPES[empresa.facturacion] ?? 0;
+  if (montoNum !== null) {
+    if (tope >= montoNum) score += 15;
+  } else {
+    score += 6; // monto desconocido → crédito parcial
+  }
+
+  // 5. Capacidades técnicas relacionadas (+15)
+  const capTokens = (empresa.capacidades || "").toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .split(/[\s,;.]+/).filter(t => t.length > 4);
+  const capHits = capTokens.filter(t => texto.includes(t)).length;
+  if (capHits >= 2) score += 15;
+  else if (capHits === 1) score += 9;
 
   return Math.min(100, Math.max(0, Math.round(score)));
 }
@@ -129,6 +162,91 @@ function scoreEmpresa(licit, empresa) {
 function scoreColor(s) {
   if (s === null) return "var(--ink3)";
   return s >= 70 ? "var(--green)" : s >= 45 ? "var(--yellow)" : "var(--red)";
+}
+
+// ─── DISTANCIA (Sonora) ───────────────────────────────────────────────────────
+const CIUDADES_GEO = {
+  "hermosillo":            [29.0729, -110.9559],
+  "nogales":               [31.3130, -110.9381],
+  "ciudad obregon":        [27.4867, -109.9307],
+  "cajeme":                [27.4867, -109.9307],
+  "navojoa":               [27.0869, -109.4422],
+  "guaymas":               [27.9216, -110.8976],
+  "empalme":               [27.9574, -110.8123],
+  "san luis rio colorado": [32.4588, -114.7748],
+  "agua prieta":           [31.3267, -109.5560],
+  "cananea":               [30.8667, -110.2833],
+  "caborca":               [30.7111, -112.1449],
+  "santa ana":             [30.5344, -111.1218],
+  "magdalena":             [30.6268, -110.9592],
+  "imuris":                [30.7833, -110.8500],
+  "moctezuma":             [29.8000, -109.6667],
+  "sahuaripa":             [29.0500, -109.2333],
+  "ures":                  [29.4361, -110.3970],
+  "huatabampo":            [26.8139, -109.6400],
+  "alamos":                [27.0167, -108.9333],
+  "nacozari":              [30.3833, -109.6833],
+  "obregon":               [27.4867, -109.9307],
+  "puerto penasco":        [31.3167, -113.5333],
+  "pitiquito":             [30.6667, -112.0500],
+  "altar":                 [30.7167, -111.8500],
+  "sonora":                [29.0729, -110.9559], // estado → capital
+};
+
+function _norm(s) {
+  return (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
+
+function extractCiudad(dependencia) {
+  if (!dependencia) return null;
+  const dep = _norm(dependencia);
+
+  // Match por nombre de ciudad (más largos primero para evitar falsos positivos)
+  const sorted = Object.keys(CIUDADES_GEO).sort((a, b) => b.length - a.length);
+  for (const c of sorted) {
+    if (dep.includes(_norm(c))) return c;
+  }
+
+  // Patrones de municipio / ayuntamiento
+  const m = dep.match(/(?:municipio|ayuntamiento|h\.?\s*ayuntamiento)\s+de\s+([a-z\s]+?)(?:\s|,|$)/);
+  if (m) {
+    const nombre = m[1].trim();
+    for (const c of sorted) {
+      if (_norm(c) === nombre || nombre.startsWith(_norm(c))) return c;
+    }
+  }
+
+  // Organismos estatales → capital
+  if (/secretaria|gobierno del estado|isssteson|coespreson|imss|issste|sepen|conagua|comision estatal|instituto sonorense/.test(dep)) {
+    return "hermosillo";
+  }
+
+  return null;
+}
+
+function haversineKm([lat1, lon1], [lat2, lon2]) {
+  const R = 6371, toRad = x => x * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1), dLon = toRad(lon2 - lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function calcDistanciaKm(ciudadEmpresa, ciudadDep) {
+  const c1 = CIUDADES_GEO[_norm(ciudadEmpresa)];
+  const c2 = CIUDADES_GEO[_norm(ciudadDep)];
+  if (!c1 || !c2) return null;
+  return haversineKm(c1, c2);
+}
+
+function distanciaCategoria(km, empresa) {
+  if (km === null) return null;
+  const cerca = Number(empresa?.distanciaCerca) || 15;
+  const media = Number(empresa?.distanciaMedia) || 25;
+  const lejos = Number(empresa?.distanciaLejos) || 50;
+  if (km <= cerca) return "cerca";
+  if (km <= media) return "media";
+  if (km <= lejos) return "lejos";
+  return "muyLejos"; // fuera del rango configurado
 }
 
 const TIPOS = [
@@ -324,6 +442,11 @@ tr:nth-child(even) td{background:rgba(255,255,255,0.02)}
 .lic-score-bar-wrap{flex:1;height:5px;background:var(--border);border-radius:3px;overflow:hidden}
 .lic-score-bar{height:100%;border-radius:3px;transition:width 0.7s ease}
 .lic-score-lbl{font-family:var(--mono);font-size:10px;color:var(--ink3)}
+.lic-dist{font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:5px;border:1px solid;white-space:nowrap}
+.lic-dist.cerca{background:rgba(16,185,129,0.08);border-color:rgba(16,185,129,0.2);color:var(--green)}
+.lic-dist.media{background:rgba(245,158,11,0.08);border-color:rgba(245,158,11,0.2);color:#d97706}
+.lic-dist.lejos{background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.2);color:var(--red)}
+.dash-score-hint{font-family:var(--mono);font-size:11px;color:var(--ink3);padding:10px 14px;background:var(--surface);border:1px solid var(--border2);border-radius:8px;margin-bottom:14px}
 .lic-date{font-family:var(--mono);font-size:10px;color:var(--ink3);display:flex;align-items:center;gap:4px}
 .dash-empty{text-align:center;padding:60px 20px;color:var(--ink3)}
 .dash-empty .de-icon{font-size:40px;margin-bottom:14px}
@@ -574,13 +697,21 @@ function LoginScreen({ onLogin }) {
 
 // ─── EMPRESA FORM ─────────────────────────────────────────────────────────────
 function EmpresaForm({ empresa, onSave, onCancel }) {
-  const [f, setF] = useState(empresa || { nombre:"",sector:"",facturacion:"",empleados:"",certificaciones:"",experiencia:"",capacidades:"",historial:"" });
+  const [f, setF] = useState(empresa || {
+    nombre:"", sector:"", facturacion:"", empleados:"",
+    certificaciones:"", experiencia:"", capacidades:"", historial:"",
+    ciudad:"", distanciaCerca:"15", distanciaMedia:"25", distanciaLejos:"50",
+  });
   const s = (k) => (e) => setF(p=>({...p,[k]:e.target.value}));
   const valid = f.nombre && f.sector && f.facturacion;
+  const ciudadesOrdenadas = Object.keys(CIUDADES_GEO)
+    .filter(c => !["cajeme","obregon","sonora"].includes(c))
+    .sort()
+    .map(c => c.replace(/\b\w/g, l => l.toUpperCase()));
   return (
     <div className="page">
       <div className="pg-title">Perfil de Empresa</div>
-      <div className="pg-sub">Se inyecta en cada análisis. Guardado en tu dispositivo.</div>
+      <div className="pg-sub">Se inyecta en cada análisis y en el score del dashboard. Guardado en tu dispositivo.</div>
       <div className="card">
         <div className="ct">🏢 Datos Básicos</div>
         <div className="fg">
@@ -597,6 +728,35 @@ function EmpresaForm({ empresa, onSave, onCancel }) {
           <div className="fl ff"><label className="lbl">Experiencia en Licitaciones</label><textarea className="ta" value={f.experiencia} onChange={s("experiencia")} placeholder="Ganamos 3 licitaciones de TI 2022-2024..."/></div>
           <div className="fl ff"><label className="lbl">Capacidades Técnicas</label><textarea className="ta" value={f.capacidades} onChange={s("capacidades")} placeholder="Planta propia, entrega en 48hs..."/></div>
           <div className="fl ff"><label className="lbl">Historial / Lecciones</label><textarea className="ta" value={f.historial} onChange={s("historial")} placeholder="Perdimos una vez por no tener seguro de caución..."/></div>
+        </div>
+      </div>
+      <div className="card">
+        <div className="ct">📍 Ubicación y Alcance</div>
+        <div className="fg">
+          <div className="fl ff">
+            <label className="lbl">Ciudad de tu empresa</label>
+            <select className="sel" value={f.ciudad} onChange={s("ciudad")}>
+              <option value="">Seleccionar ciudad...</option>
+              {ciudadesOrdenadas.map(c=><option key={c} value={c.toLowerCase()}>{c}</option>)}
+            </select>
+          </div>
+          <div className="fl">
+            <label className="lbl">Cerca (km)</label>
+            <input className="inp" type="number" min="1" max="500" value={f.distanciaCerca} onChange={s("distanciaCerca")} placeholder="15"/>
+          </div>
+          <div className="fl">
+            <label className="lbl">Media distancia (km)</label>
+            <input className="inp" type="number" min="1" max="500" value={f.distanciaMedia} onChange={s("distanciaMedia")} placeholder="25"/>
+          </div>
+          <div className="fl">
+            <label className="lbl">Lejos (km)</label>
+            <input className="inp" type="number" min="1" max="1000" value={f.distanciaLejos} onChange={s("distanciaLejos")} placeholder="50"/>
+          </div>
+          <div className="fl" style={{gridColumn:"1/-1"}}>
+            <div style={{fontFamily:"var(--mono)",fontSize:10,color:"var(--ink3)",marginTop:2}}>
+              🟢 Cerca ≤ {f.distanciaCerca||15} km · 🟡 Media ≤ {f.distanciaMedia||25} km · 🔴 Lejos ≤ {f.distanciaLejos||50} km
+            </div>
+          </div>
         </div>
       </div>
       <div className="btn-row">
@@ -634,7 +794,8 @@ export default function LicitaIA() {
   const [rate,          setRate]          = useState(()=>{ try { return getRateLimit(); } catch { return { usos:0, ultima:null, resetAt:null }; } });
   const [filtroDepe,    setFiltroDepe]    = useState("");
   const [filtroFecha,   setFiltroFecha]   = useState("");
-  const [filtroEstatus, setFiltroEstatus] = useState("");
+  const [filtroEstatus,   setFiltroEstatus]   = useState("");
+  const [filtroDistancia, setFiltroDistancia] = useState("");
   const [v2Token,       setV2Token]       = useState(()=>{ try { return localStorage.getItem("licitaia_v4_v2token")||""; } catch { return ""; } });
   const [showToken,     setShowToken]     = useState(false);
 
@@ -927,18 +1088,32 @@ export default function LicitaIA() {
             const dependencias = [...new Set(licitaciones.map(l=>l.dependencia).filter(Boolean))].sort();
             const estatuses    = [...new Set(licitaciones.map(l=>l.estatus).filter(s=>s&&s!=="—"))].sort();
 
+            // Enriquecer cada licitación con score y distancia
+            const enriquecidas = licitaciones.map(l => {
+              const score = scoreEmpresa(l, empresa);
+              const ciudadDep = extractCiudad(l.dependencia);
+              const km = empresa?.ciudad ? calcDistanciaKm(empresa.ciudad, ciudadDep) : null;
+              const distCat = distanciaCategoria(km, empresa);
+              return { ...l, score, km, distCat };
+            });
+
             // Aplicar filtros
-            const visibles = licitaciones
+            const visibles = enriquecidas
               .filter(l => !filtroDepe    || l.dependencia === filtroDepe)
               .filter(l => !filtroFecha   || (l.fechaPublicacion && l.fechaPublicacion >= filtroFecha))
               .filter(l => !filtroEstatus || (l.estatus && l.estatus.toUpperCase().includes(filtroEstatus.toUpperCase())))
-              .map(l => ({ ...l, score: scoreEmpresa(l, empresa) }))
+              .filter(l => {
+                if (!filtroDistancia || !empresa?.ciudad) return true;
+                return l.distCat === filtroDistancia;
+              })
               .sort((a,b) => {
-                if (b.fechaPublicacion && a.fechaPublicacion) {
-                  const df = b.fechaPublicacion.localeCompare(a.fechaPublicacion);
-                  if (df !== 0) return df;
+                // Si hay empresa: ordenar por score desc, luego fecha desc
+                // Sin empresa: ordenar por fecha desc
+                if (empresa) {
+                  const ds = (b.score ?? -1) - (a.score ?? -1);
+                  if (ds !== 0) return ds;
                 }
-                return (b.score ?? 0) - (a.score ?? 0);
+                return (b.fechaPublicacion || "").localeCompare(a.fechaPublicacion || "");
               });
 
             return (
@@ -949,9 +1124,9 @@ export default function LicitaIA() {
                 </div>
 
                 {!empresa && (
-                  <div className="warn-banner" style={{marginBottom:18}}>
-                    ⚠️ Sin perfil — se muestran sin score.{" "}
-                    <span style={{color:"var(--blue)",cursor:"pointer",fontWeight:600,marginLeft:4}} onClick={()=>setView("empresa")}>Configurar →</span>
+                  <div className="dash-score-hint">
+                    ⭐ Configura tu perfil para ver scores personalizados y el filtro de distancia.{" "}
+                    <span style={{color:"var(--blue)",cursor:"pointer",fontWeight:600}} onClick={()=>setView("empresa")}>Configurar perfil →</span>
                   </div>
                 )}
 
@@ -972,9 +1147,17 @@ export default function LicitaIA() {
                       <option value="">Todos los estatus</option>
                       {estatuses.map(s=><option key={s} value={s}>{s}</option>)}
                     </select>
+                    {empresa?.ciudad && (
+                      <select className="dash-sel" value={filtroDistancia} onChange={e=>setFiltroDistancia(e.target.value)}>
+                        <option value="">📍 Todas las distancias</option>
+                        <option value="cerca">🟢 Cerca (≤{empresa.distanciaCerca||15} km)</option>
+                        <option value="media">🟡 Media (≤{empresa.distanciaMedia||25} km)</option>
+                        <option value="lejos">🔴 Lejos (≤{empresa.distanciaLejos||50} km)</option>
+                      </select>
+                    )}
                     <input type="date" className="dash-inp" value={filtroFecha} onChange={e=>setFiltroFecha(e.target.value)} title="Publicadas desde"/>
-                    {(filtroDepe||filtroFecha||filtroEstatus) && (
-                      <button className="btn btn-ghost btn-sm" onClick={()=>{setFiltroDepe("");setFiltroFecha("");setFiltroEstatus("");}}>✕ Limpiar</button>
+                    {(filtroDepe||filtroFecha||filtroEstatus||filtroDistancia) && (
+                      <button className="btn btn-ghost btn-sm" onClick={()=>{setFiltroDepe("");setFiltroFecha("");setFiltroEstatus("");setFiltroDistancia("");}}>✕ Limpiar</button>
                     )}
                   </div>
 
@@ -1094,6 +1277,17 @@ export default function LicitaIA() {
                             <span className={`lic-badge ${esVigente?"vigente":esSeguimiento?"seguimiento":esAdjudicada?"adjudicada":"otro"}`}>{l.estatus}</span>
                             {l.modalidad && l.modalidad !== "—" && <span className="lic-badge otro">{l.modalidad}</span>}
                             {l.tipo && l.tipo !== "—" && <span className="lic-badge otro">{l.tipo}</span>}
+                            {l.distCat && l.distCat !== "muyLejos" && (
+                              <span className={`lic-dist ${l.distCat}`} title={`${Math.round(l.km)} km`}>
+                                {l.distCat==="cerca"?"🟢 Cerca":l.distCat==="media"?"🟡 Media":"🔴 Lejos"}
+                                {" "}{Math.round(l.km)} km
+                              </span>
+                            )}
+                            {l.distCat === "muyLejos" && (
+                              <span className="lic-dist lejos" title={`${Math.round(l.km)} km — fuera de tu rango`}>
+                                🔴 {Math.round(l.km)} km
+                              </span>
+                            )}
                           </div>
 
                           <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
@@ -1147,7 +1341,7 @@ export default function LicitaIA() {
                     <div className="de-icon">🔍</div>
                     <div className="de-title">Sin resultados con estos filtros</div>
                     <div className="de-sub">
-                      <button className="btn btn-ghost btn-sm" onClick={()=>{setFiltroDepe("");setFiltroFecha("");setFiltroEstatus("");}}>Limpiar filtros</button>
+                      <button className="btn btn-ghost btn-sm" onClick={()=>{setFiltroDepe("");setFiltroFecha("");setFiltroEstatus("");setFiltroDistancia("");}}>Limpiar filtros</button>
                     </div>
                   </div>
                 )}
