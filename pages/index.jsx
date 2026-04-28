@@ -494,6 +494,65 @@ tr:nth-child(even) td{background:rgba(255,255,255,0.02)}
 .login-toggle span{color:var(--blue);cursor:pointer;font-weight:600}
 .login-err{background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.2);border-radius:7px;padding:10px 12px;font-size:12.5px;color:var(--red);margin-bottom:14px}
 .login-ok{background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:7px;padding:10px 12px;font-size:12.5px;color:var(--green);margin-bottom:14px}
+
+/* ── REVISAR PROPUESTA ── */
+.rev-upload-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}
+@media(max-width:640px){.rev-upload-grid{grid-template-columns:1fr}}
+.rev-zone{border:2px dashed var(--border2);border-radius:12px;padding:20px 16px;text-align:center;cursor:pointer;transition:all 0.2s;background:var(--surface);min-height:130px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px}
+.rev-zone:hover,.rev-zone.drag{border-color:var(--blue);background:var(--blue-bg)}
+.rev-zone.loaded{border-color:var(--green);border-style:solid;background:rgba(16,185,129,0.04)}
+.rev-zone-icon{font-size:26px}
+.rev-zone-label{font-family:var(--display);font-size:13px;font-weight:600;color:var(--ink)}
+.rev-zone-sub{font-family:var(--mono);font-size:10px;color:var(--ink3)}
+.rev-zone-file{font-family:var(--mono);font-size:11px;color:var(--green);font-weight:500;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 8px}
+.rev-zone-clear{background:none;border:none;color:var(--ink3);font-size:11px;cursor:pointer;padding:2px 6px;border-radius:4px;margin-top:2px}
+.rev-zone-clear:hover{color:var(--red)}
+.rev-estado{display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:12px;margin-bottom:20px;border:1.5px solid}
+.rev-estado.APROBADO{background:rgba(16,185,129,0.08);border-color:rgba(16,185,129,0.25)}
+.rev-estado.EN_RIESGO{background:rgba(245,158,11,0.08);border-color:rgba(245,158,11,0.25)}
+.rev-estado.INCOMPLETO{background:rgba(239,68,68,0.08);border-color:rgba(239,68,68,0.25)}
+.rev-estado-icon{font-size:24px;flex-shrink:0}
+.rev-estado-label{font-family:var(--display);font-size:16px;font-weight:700}
+.rev-estado.APROBADO .rev-estado-label{color:var(--green)}
+.rev-estado.EN_RIESGO .rev-estado-label{color:var(--yellow)}
+.rev-estado.INCOMPLETO .rev-estado-label{color:var(--red)}
+.rev-estado-sub{font-family:var(--mono);font-size:11px;color:var(--ink3);margin-top:2px}
+.rev-score-badge{margin-left:auto;font-family:var(--display);font-size:28px;font-weight:700;flex-shrink:0}
+.rev-score-badge span{font-family:var(--mono);font-size:11px;color:var(--ink3);font-weight:400;margin-left:2px}
+.rev-sec{margin-bottom:22px}
+.rev-sec-lbl{font-family:var(--mono);font-size:11px;color:var(--ink3);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.rev-checklist{display:flex;flex-direction:column;gap:4px}
+.rev-req{border-radius:9px;overflow:hidden;font-size:13px}
+.rev-req-head{display:flex;align-items:flex-start;gap:10px;padding:9px 12px}
+.rev-req.CUMPLIDO .rev-req-head{background:rgba(16,185,129,0.07)}
+.rev-req.PARCIAL  .rev-req-head{background:rgba(245,158,11,0.07)}
+.rev-req.FALTANTE .rev-req-head{background:rgba(239,68,68,0.07)}
+.rev-req-dot{font-size:13px;flex-shrink:0;margin-top:1px}
+.rev-req-body{flex:1}
+.rev-req-nombre{font-weight:600;font-size:13px;color:var(--ink);line-height:1.35}
+.rev-req-desc{font-size:12px;color:var(--ink3);margin-top:3px;line-height:1.4}
+.rev-req-tag{font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:5px;border:1px solid;white-space:nowrap;flex-shrink:0;align-self:flex-start;margin-top:2px}
+.rev-req-tag.CUMPLIDO{background:rgba(16,185,129,0.1);border-color:rgba(16,185,129,0.25);color:var(--green)}
+.rev-req-tag.PARCIAL{background:rgba(245,158,11,0.1);border-color:rgba(245,158,11,0.25);color:var(--yellow)}
+.rev-req-tag.FALTANTE{background:rgba(239,68,68,0.1);border-color:rgba(239,68,68,0.25);color:var(--red)}
+.rev-req-detail{padding:6px 12px 9px 35px;font-size:11.5px;line-height:1.5;color:var(--ink2)}
+.rev-req.CUMPLIDO .rev-req-detail{background:rgba(16,185,129,0.03)}
+.rev-req.PARCIAL  .rev-req-detail{background:rgba(245,158,11,0.03)}
+.rev-req.FALTANTE .rev-req-detail{background:rgba(239,68,68,0.03)}
+.rev-req-detail-row{display:flex;gap:5px;margin-bottom:2px}
+.rev-req-detail-key{font-family:var(--mono);font-size:10px;color:var(--ink3);flex-shrink:0;width:70px}
+.rev-list{display:flex;flex-direction:column;gap:5px}
+.rev-list-item{display:flex;gap:9px;padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:13px;line-height:1.4;color:var(--ink2)}
+.rev-list-item.error{background:rgba(239,68,68,0.05);border-color:rgba(239,68,68,0.15)}
+.rev-list-item.rec{background:rgba(59,130,246,0.04);border-color:rgba(59,130,246,0.12)}
+.rev-list-icon{flex-shrink:0;font-size:13px}
+.rev-progress{margin-bottom:12px}
+.rev-progress-bar{height:6px;background:var(--border);border-radius:4px;overflow:hidden;display:flex;gap:1px}
+.rev-progress-seg.ok{background:var(--green)}
+.rev-progress-seg.warn{background:var(--yellow)}
+.rev-progress-seg.bad{background:var(--red)}
+.rev-progress-stats{display:flex;gap:14px;margin-top:8px}
+.rev-stat{font-family:var(--mono);font-size:11px;display:flex;align-items:center;gap:4px}
 `;
 
 // ─── TRACE COMPONENT ─────────────────────────────────────────────────────────
@@ -629,6 +688,138 @@ function ResultRenderer({ data, warnings }) {
       {warnings?.length > 0 && <div className="validation-warn">⚠ {warnings.join(" · ")}</div>}
       <UnifiedResult data={data}/>
     </>
+  );
+}
+
+// ─── REVISION RESULT COMPONENT ────────────────────────────────────────────────
+function RevisionResult({ data }) {
+  if (!data) return null;
+  const sc = data.score ?? null;
+  const scColor = sc !== null ? (sc >= 80 ? "var(--green)" : sc >= 50 ? "var(--yellow)" : "var(--red)") : "var(--ink3)";
+  const estadoIcon = { APROBADO: "✅", EN_RIESGO: "⚠️", INCOMPLETO: "❌" }[data.estado] || "❓";
+  const estadoText = { APROBADO: "Propuesta Aprobada", EN_RIESGO: "Propuesta en Riesgo", INCOMPLETO: "Propuesta Incompleta" }[data.estado] || data.estado;
+
+  const cumplidos = (data.checklist || []).filter(r => r.estado === "CUMPLIDO").length;
+  const parciales  = (data.checklist || []).filter(r => r.estado === "PARCIAL").length;
+  const faltantes  = (data.checklist || []).filter(r => r.estado === "FALTANTE").length;
+  const total = cumplidos + parciales + faltantes;
+
+  return (
+    <div className="result-wrap">
+      {/* Estado general */}
+      <div className={`rev-estado ${data.estado}`}>
+        <div className="rev-estado-icon">{estadoIcon}</div>
+        <div>
+          <div className="rev-estado-label">{estadoText}</div>
+          {data.licitacion?.nombre && data.licitacion.nombre !== "—" && (
+            <div className="rev-estado-sub">{data.licitacion.nombre}{data.licitacion.organismo && data.licitacion.organismo !== "—" ? ` · ${data.licitacion.organismo}` : ""}</div>
+          )}
+        </div>
+        {sc !== null && (
+          <div className="rev-score-badge" style={{ color: scColor }}>
+            {sc}<span>/ 100</span>
+          </div>
+        )}
+      </div>
+
+      {/* Resumen */}
+      <div className="rev-sec">
+        <div className="rev-sec-lbl">📋 Resumen ejecutivo</div>
+        <div className="prose-box">{data.resumen}</div>
+      </div>
+
+      {/* Progress bar + stats */}
+      {total > 0 && (
+        <div className="rev-sec">
+          <div className="rev-sec-lbl">📊 Cumplimiento de requisitos</div>
+          <div className="rev-progress">
+            <div className="rev-progress-bar">
+              {cumplidos > 0 && <div className="rev-progress-seg ok" style={{ flex: cumplidos }}/>}
+              {parciales > 0 && <div className="rev-progress-seg warn" style={{ flex: parciales }}/>}
+              {faltantes > 0 && <div className="rev-progress-seg bad" style={{ flex: faltantes }}/>}
+            </div>
+            <div className="rev-progress-stats">
+              <div className="rev-stat"><span style={{color:"var(--green)"}}>✓</span> {cumplidos} cumplidos</div>
+              <div className="rev-stat"><span style={{color:"var(--yellow)"}}>⚠</span> {parciales} parciales</div>
+              <div className="rev-stat"><span style={{color:"var(--red)"}}>✗</span> {faltantes} faltantes</div>
+              <div className="rev-stat" style={{color:"var(--ink3)"}}>de {total} requisitos</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Checklist */}
+      {data.checklist?.length > 0 && (
+        <div className="rev-sec">
+          <div className="rev-sec-lbl">☑️ Checklist de requisitos</div>
+          <div className="rev-checklist">
+            {data.checklist.map((r, i) => {
+              const dot = r.estado === "CUMPLIDO" ? "✓" : r.estado === "FALTANTE" ? "✗" : "⚠";
+              return (
+                <div key={i} className={`rev-req ${r.estado}`}>
+                  <div className="rev-req-head">
+                    <span className="rev-req-dot">{dot}</span>
+                    <div className="rev-req-body">
+                      <div className="rev-req-nombre">{r.requisito}</div>
+                      {r.descripcion && <div className="rev-req-desc">{r.descripcion}</div>}
+                    </div>
+                    <span className={`rev-req-tag ${r.estado}`}>
+                      {r.estado === "CUMPLIDO" ? "✓ Cumplido" : r.estado === "FALTANTE" ? "✗ Faltante" : "⚠ Parcial"}
+                    </span>
+                  </div>
+                  {(r.fuente_base || r.evidencia_propuesta) && (
+                    <div className="rev-req-detail">
+                      {r.fuente_base && (
+                        <div className="rev-req-detail-row">
+                          <span className="rev-req-detail-key">📌 Bases:</span>
+                          <span style={{fontStyle:"italic",color:"var(--ink3)"}}>{r.fuente_base}</span>
+                        </div>
+                      )}
+                      {r.evidencia_propuesta && (
+                        <div className="rev-req-detail-row">
+                          <span className="rev-req-detail-key">📄 Propuesta:</span>
+                          <span>{r.evidencia_propuesta}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Errores críticos */}
+      {data.errores?.length > 0 && (
+        <div className="rev-sec">
+          <div className="rev-sec-lbl">🚨 Errores y faltantes críticos</div>
+          <div className="rev-list">
+            {data.errores.map((e, i) => (
+              <div key={i} className="rev-list-item error">
+                <span className="rev-list-icon">✗</span>
+                <span>{e}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Recomendaciones */}
+      {data.recomendaciones?.length > 0 && (
+        <div className="rev-sec">
+          <div className="rev-sec-lbl">💡 Recomendaciones</div>
+          <div className="rev-list">
+            {data.recomendaciones.map((r, i) => (
+              <div key={i} className="rev-list-item rec">
+                <span className="rev-list-icon">→</span>
+                <span>{r}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -860,6 +1051,17 @@ export default function LicitaIA() {
   const [toast,      setToast]     = useState(null);
   const fileRef = useRef(null);
 
+  // ── Revisar Propuesta ───────────────────────────────────────────────────────
+  const [revBases,   setRevBases]   = useState(null);
+  const [revProp,    setRevProp]    = useState(null);
+  const [revDragB,   setRevDragB]   = useState(false);
+  const [revDragP,   setRevDragP]   = useState(false);
+  const [revLoading, setRevLoading] = useState(false);
+  const [revResult,  setRevResult]  = useState(null);
+  const [revError,   setRevError]   = useState(null);
+  const revBasesRef = useRef(null);
+  const revPropRef  = useRef(null);
+
   // ── Dashboard licitaciones ──────────────────────────────────────────────────
   const [licitaciones,  setLicitaciones]  = useState([]);
   const [licitLoading,  setLicitLoading]  = useState(false);
@@ -958,6 +1160,38 @@ export default function LicitaIA() {
     } finally { setLoading(false); }
   },[file,tipo,empresa,historial]);
 
+  const acceptRevFile = useCallback((f, slot) => {
+    if (!f) return;
+    if (!f.name.toLowerCase().endsWith(".pdf")) { showToast("⚠ Solo archivos PDF"); return; }
+    if (f.size > 32*1024*1024) { showToast("⚠ Máximo 32 MB por archivo"); return; }
+    if (slot === "bases") { setRevBases(f); setRevResult(null); setRevError(null); }
+    else                  { setRevProp(f);  setRevResult(null); setRevError(null); }
+  }, [showToast]);
+
+  const runRevision = useCallback(async () => {
+    if (!revBases || !revProp) return;
+    setRevLoading(true); setRevError(null); setRevResult(null);
+    try {
+      const [bases64, propuesta64] = await Promise.all([
+        readFileAsBase64(revBases),
+        readFileAsBase64(revProp),
+      ]);
+      const res = await fetch("/api/revisar-propuesta", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bases64, propuesta64, empresa: empresa || null }),
+      });
+      if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e?.error || `Error ${res.status}`); }
+      const body = await res.json();
+      if (!body.data) throw new Error("El servidor no devolvió datos");
+      setRevResult(body.data);
+    } catch (e) {
+      setRevError(e.message || "Error desconocido");
+    } finally {
+      setRevLoading(false);
+    }
+  }, [revBases, revProp, empresa]);
+
   // Pantalla de carga inicial
   if (!authReady) {
     return (
@@ -996,6 +1230,7 @@ export default function LicitaIA() {
             {[
               {id:"analizar",  icon:"⚡", label:"Nuevo Análisis"},
               {id:"dashboard", icon:"📋", label:"Licitaciones Sonora", badge:licitaciones.length||null},
+              {id:"revisar",   icon:"🔍", label:"Revisar Propuesta"},
               {id:"historial", icon:"📂", label:"Historial", badge:historial.length||null},
               {id:"empresa",   icon:"🏢", label:empresa?"Perfil Empresa":"⚠ Configurar Empresa"},
             ].map(n=>(
@@ -1433,6 +1668,119 @@ export default function LicitaIA() {
               </div>
             );
           })()}
+
+          {view==="revisar" && (
+            <div className="page">
+              <div className="pg-title">Revisar Propuesta</div>
+              <div className="pg-sub">Sube las bases de la licitación y tu propuesta — la IA verifica cada requisito y te da un dictamen.</div>
+
+              {!revResult && (
+                <>
+                  {/* Upload zones */}
+                  <div className="rev-upload-grid">
+                    {/* Bases */}
+                    <div>
+                      <div style={{fontFamily:"var(--mono)",fontSize:11,color:"var(--ink3)",marginBottom:6}}>DOCUMENTO 1 — Bases de la licitación</div>
+                      <div
+                        className={`rev-zone ${revDragB?"drag":""} ${revBases?"loaded":""}`}
+                        onDragOver={e=>{e.preventDefault();setRevDragB(true)}}
+                        onDragLeave={()=>setRevDragB(false)}
+                        onDrop={e=>{e.preventDefault();setRevDragB(false);acceptRevFile(e.dataTransfer.files[0],"bases")}}
+                        onClick={()=>!revBases&&revBasesRef.current?.click()}
+                      >
+                        <div className="rev-zone-icon">{revBases?"📄":"📋"}</div>
+                        {revBases ? (
+                          <>
+                            <div className="rev-zone-file">{revBases.name}</div>
+                            <div className="rev-zone-sub">{(revBases.size/1024).toFixed(0)} KB · PDF</div>
+                            <button className="rev-zone-clear" onClick={e=>{e.stopPropagation();setRevBases(null);setRevResult(null);setRevError(null)}}>Cambiar</button>
+                          </>
+                        ) : (
+                          <>
+                            <div className="rev-zone-label">Bases de licitación</div>
+                            <div className="rev-zone-sub">Arrastrá o hacé clic · PDF · Máx. 32 MB</div>
+                          </>
+                        )}
+                      </div>
+                      <input ref={revBasesRef} type="file" accept=".pdf,application/pdf" style={{display:"none"}} onChange={e=>acceptRevFile(e.target.files[0],"bases")}/>
+                    </div>
+
+                    {/* Propuesta */}
+                    <div>
+                      <div style={{fontFamily:"var(--mono)",fontSize:11,color:"var(--ink3)",marginBottom:6}}>DOCUMENTO 2 — Mi propuesta</div>
+                      <div
+                        className={`rev-zone ${revDragP?"drag":""} ${revProp?"loaded":""}`}
+                        onDragOver={e=>{e.preventDefault();setRevDragP(true)}}
+                        onDragLeave={()=>setRevDragP(false)}
+                        onDrop={e=>{e.preventDefault();setRevDragP(false);acceptRevFile(e.dataTransfer.files[0],"propuesta")}}
+                        onClick={()=>!revProp&&revPropRef.current?.click()}
+                      >
+                        <div className="rev-zone-icon">{revProp?"📄":"📝"}</div>
+                        {revProp ? (
+                          <>
+                            <div className="rev-zone-file">{revProp.name}</div>
+                            <div className="rev-zone-sub">{(revProp.size/1024).toFixed(0)} KB · PDF</div>
+                            <button className="rev-zone-clear" onClick={e=>{e.stopPropagation();setRevProp(null);setRevResult(null);setRevError(null)}}>Cambiar</button>
+                          </>
+                        ) : (
+                          <>
+                            <div className="rev-zone-label">Mi propuesta</div>
+                            <div className="rev-zone-sub">Arrastrá o hacé clic · PDF · Máx. 32 MB</div>
+                          </>
+                        )}
+                      </div>
+                      <input ref={revPropRef} type="file" accept=".pdf,application/pdf" style={{display:"none"}} onChange={e=>acceptRevFile(e.target.files[0],"propuesta")}/>
+                    </div>
+                  </div>
+
+                  {empresa && <div className="ctx-pill">🏢 <strong>{empresa.nombre}</strong> · análisis personalizado</div>}
+                  {!empresa && (
+                    <div className="dash-score-hint" style={{marginBottom:16}}>
+                      ⭐ Sin perfil de empresa — el análisis será genérico.{" "}
+                      <span style={{color:"var(--blue)",cursor:"pointer",fontWeight:600}} onClick={()=>setView("empresa")}>Configurar →</span>
+                    </div>
+                  )}
+
+                  {revError && <div className="err-box">✗ {revError}</div>}
+
+                  <div className="btn-row">
+                    <button
+                      className="btn btn-blue"
+                      disabled={!revBases || !revProp || revLoading}
+                      onClick={runRevision}
+                    >
+                      {revLoading ? "Analizando..." : "🔍 Revisar Propuesta"}
+                    </button>
+                    {(revBases || revProp) && (
+                      <button className="btn btn-ghost" onClick={()=>{setRevBases(null);setRevProp(null);setRevResult(null);setRevError(null);}}>
+                        Limpiar
+                      </button>
+                    )}
+                  </div>
+
+                  {revLoading && (
+                    <div className="card" style={{marginTop:20}}>
+                      <div className="loading">
+                        <div className="spinner"/>
+                        <div className="ld-msg">Leyendo las bases y la propuesta...</div>
+                        <div className="ld-sub">Extrayendo requisitos · Comparando · Generando dictamen</div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {revResult && (
+                <div className="card">
+                  <RevisionResult data={revResult}/>
+                  <div className="btn-row" style={{marginTop:22,paddingTop:18,borderTop:"1px solid var(--border)"}}>
+                    <button className="btn btn-blue" onClick={()=>{setRevResult(null);setRevError(null);}}>🔍 Nueva revisión</button>
+                    <button className="btn btn-ghost" onClick={()=>{setRevBases(null);setRevProp(null);setRevResult(null);setRevError(null);}}>Empezar de cero</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </main>
       </div>
       {toast && <div className="toast">{toast}</div>}
