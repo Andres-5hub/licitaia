@@ -231,8 +231,30 @@ function haversineKm([lat1, lon1], [lat2, lon2]) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function calcDistanciaKm(ciudadEmpresa, ciudadDep) {
-  const c1 = CIUDADES_GEO[_norm(ciudadEmpresa)];
+// Geocodifica un CP mexicano vía Nominatim (sin API key)
+async function geocodeCPMexico(cp) {
+  const url = `https://nominatim.openstreetmap.org/search?postalcode=${encodeURIComponent(cp)}&country=MX&format=json&limit=1&addressdetails=1`;
+  const res = await fetch(url, {
+    headers: { "Accept-Language": "es", "User-Agent": "LicitaIA/1.0" },
+  });
+  if (!res.ok) throw new Error(`Nominatim ${res.status}`);
+  const data = await res.json();
+  if (!data.length) return null;
+  const d = data[0];
+  const ciudad = d.address?.city || d.address?.town || d.address?.village || d.address?.county || "";
+  const estado = d.address?.state || "";
+  return {
+    lat: parseFloat(d.lat),
+    lon: parseFloat(d.lon),
+    ciudadResuelta: [ciudad, estado].filter(Boolean).join(", "),
+  };
+}
+
+function calcDistanciaKm(empresa, ciudadDep) {
+  // Empresa: usa lat/lon del CP geocodificado, si existe
+  const c1 = (empresa?.latEmpresa && empresa?.lonEmpresa)
+    ? [empresa.latEmpresa, empresa.lonEmpresa]
+    : CIUDADES_GEO[_norm(empresa?.ciudad || "")]; // fallback a ciudad guardada
   const c2 = CIUDADES_GEO[_norm(ciudadDep)];
   if (!c1 || !c2) return null;
   return haversineKm(c1, c2);
@@ -700,14 +722,39 @@ function EmpresaForm({ empresa, onSave, onCancel }) {
   const [f, setF] = useState(empresa || {
     nombre:"", sector:"", facturacion:"", empleados:"",
     certificaciones:"", experiencia:"", capacidades:"", historial:"",
-    ciudad:"", distanciaCerca:"15", distanciaMedia:"25", distanciaLejos:"50",
+    codigoPostal:"", latEmpresa:null, lonEmpresa:null, ciudadResuelta:"",
+    distanciaCerca:"15", distanciaMedia:"25", distanciaLejos:"50",
   });
-  const s = (k) => (e) => setF(p=>({...p,[k]:e.target.value}));
+  const [geocoding, setGeocoding] = useState(false);
+  const [geoError,  setGeoError]  = useState("");
+
+  const s = (k) => (e) => setF(p => ({...p, [k]: e.target.value}));
   const valid = f.nombre && f.sector && f.facturacion;
-  const ciudadesOrdenadas = Object.keys(CIUDADES_GEO)
-    .filter(c => !["cajeme","obregon","sonora"].includes(c))
-    .sort()
-    .map(c => c.replace(/\b\w/g, l => l.toUpperCase()));
+
+  const handleCPChange = (e) => {
+    const val = e.target.value.replace(/\D/g, "").slice(0, 5);
+    setF(p => ({ ...p, codigoPostal: val, latEmpresa: null, lonEmpresa: null, ciudadResuelta: "" }));
+    setGeoError("");
+  };
+
+  const handleVerificarCP = async () => {
+    if (!f.codigoPostal || f.codigoPostal.length !== 5) return;
+    setGeocoding(true);
+    setGeoError("");
+    try {
+      const result = await geocodeCPMexico(f.codigoPostal);
+      if (result) {
+        setF(p => ({ ...p, latEmpresa: result.lat, lonEmpresa: result.lon, ciudadResuelta: result.ciudadResuelta }));
+      } else {
+        setGeoError("Código postal no encontrado. Verifica que sea un CP válido de México.");
+      }
+    } catch {
+      setGeoError("Error al consultar. Verifica tu conexión e intenta de nuevo.");
+    } finally {
+      setGeocoding(false);
+    }
+  };
+
   return (
     <div className="page">
       <div className="pg-title">Perfil de Empresa</div>
@@ -734,11 +781,38 @@ function EmpresaForm({ empresa, onSave, onCancel }) {
         <div className="ct">📍 Ubicación y Alcance</div>
         <div className="fg">
           <div className="fl ff">
-            <label className="lbl">Ciudad de tu empresa</label>
-            <select className="sel" value={f.ciudad} onChange={s("ciudad")}>
-              <option value="">Seleccionar ciudad...</option>
-              {ciudadesOrdenadas.map(c=><option key={c} value={c.toLowerCase()}>{c}</option>)}
-            </select>
+            <label className="lbl">Código Postal de tu empresa</label>
+            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+              <input
+                className="inp"
+                type="text"
+                inputMode="numeric"
+                maxLength={5}
+                value={f.codigoPostal}
+                onChange={handleCPChange}
+                onKeyDown={e => e.key==="Enter" && handleVerificarCP()}
+                placeholder="Ej: 83000"
+                style={{width:110,flexShrink:0}}
+              />
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={handleVerificarCP}
+                disabled={!f.codigoPostal || f.codigoPostal.length !== 5 || geocoding}
+              >
+                {geocoding ? "Buscando…" : "Verificar"}
+              </button>
+              {f.ciudadResuelta && (
+                <span style={{fontFamily:"var(--mono)",fontSize:11,color:"var(--green)"}}>
+                  ✓ {f.ciudadResuelta}
+                  {f.latEmpresa && <span style={{color:"var(--ink3)",marginLeft:6}}>{f.latEmpresa.toFixed(4)}, {f.lonEmpresa.toFixed(4)}</span>}
+                </span>
+              )}
+              {geoError && <span style={{fontFamily:"var(--mono)",fontSize:11,color:"var(--red)"}}>{geoError}</span>}
+            </div>
+            <div style={{fontFamily:"var(--mono)",fontSize:10,color:"var(--ink3)",marginTop:6}}>
+              El CP se geocodifica con OpenStreetMap para calcular distancias exactas.
+            </div>
           </div>
           <div className="fl">
             <label className="lbl">Cerca (km)</label>
@@ -753,7 +827,7 @@ function EmpresaForm({ empresa, onSave, onCancel }) {
             <input className="inp" type="number" min="1" max="1000" value={f.distanciaLejos} onChange={s("distanciaLejos")} placeholder="50"/>
           </div>
           <div className="fl" style={{gridColumn:"1/-1"}}>
-            <div style={{fontFamily:"var(--mono)",fontSize:10,color:"var(--ink3)",marginTop:2}}>
+            <div style={{fontFamily:"var(--mono)",fontSize:10,color:"var(--ink3)"}}>
               🟢 Cerca ≤ {f.distanciaCerca||15} km · 🟡 Media ≤ {f.distanciaMedia||25} km · 🔴 Lejos ≤ {f.distanciaLejos||50} km
             </div>
           </div>
@@ -1092,7 +1166,7 @@ export default function LicitaIA() {
             const enriquecidas = licitaciones.map(l => {
               const score = scoreEmpresa(l, empresa);
               const ciudadDep = extractCiudad(l.dependencia);
-              const km = empresa?.ciudad ? calcDistanciaKm(empresa.ciudad, ciudadDep) : null;
+              const km = empresa?.latEmpresa ? calcDistanciaKm(empresa, ciudadDep) : null;
               const distCat = distanciaCategoria(km, empresa);
               return { ...l, score, km, distCat };
             });
@@ -1103,7 +1177,7 @@ export default function LicitaIA() {
               .filter(l => !filtroFecha   || (l.fechaPublicacion && l.fechaPublicacion >= filtroFecha))
               .filter(l => !filtroEstatus || (l.estatus && l.estatus.toUpperCase().includes(filtroEstatus.toUpperCase())))
               .filter(l => {
-                if (!filtroDistancia || !empresa?.ciudad) return true;
+                if (!filtroDistancia || !empresa?.latEmpresa) return true;
                 return l.distCat === filtroDistancia;
               })
               .sort((a,b) => {
@@ -1147,7 +1221,7 @@ export default function LicitaIA() {
                       <option value="">Todos los estatus</option>
                       {estatuses.map(s=><option key={s} value={s}>{s}</option>)}
                     </select>
-                    {empresa?.ciudad && (
+                    {empresa?.latEmpresa && (
                       <select className="dash-sel" value={filtroDistancia} onChange={e=>setFiltroDistancia(e.target.value)}>
                         <option value="">📍 Todas las distancias</option>
                         <option value="cerca">🟢 Cerca (≤{empresa.distanciaCerca||15} km)</option>
