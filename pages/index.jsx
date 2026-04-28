@@ -305,6 +305,12 @@ tr:nth-child(even) td{background:rgba(255,255,255,0.02)}
 .lic-card:hover{border-color:var(--blue-border)}
 .lic-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
 .lic-num{font-family:var(--mono);font-size:10px;color:var(--ink3);white-space:nowrap;padding-top:2px}
+.lic-num-wrap{display:flex;align-items:center;gap:4px;flex-shrink:0}
+.lic-copy{background:none;border:none;padding:2px 3px;cursor:pointer;color:var(--ink3);border-radius:4px;line-height:1;font-size:11px;opacity:0.55;transition:opacity 0.15s}
+.lic-copy:hover{opacity:1;background:var(--surface)}
+.lic-actions{display:flex;align-items:center;justify-content:flex-end;padding-top:8px;border-top:1px solid var(--border);margin-top:2px}
+.lic-portal-link{font-family:var(--mono);font-size:10px;color:var(--blue);text-decoration:none;padding:3px 8px;border:1px solid var(--blue-border);border-radius:5px;transition:background 0.15s}
+.lic-portal-link:hover{background:rgba(59,130,246,0.06)}
 .lic-titulo{font-family:var(--display);font-size:14px;font-weight:600;line-height:1.4;color:var(--ink);flex:1}
 .lic-dep{font-family:var(--mono);font-size:11px;color:var(--blue);margin-top:2px}
 .lic-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px}
@@ -1068,7 +1074,20 @@ export default function LicitaIA() {
                               <div className="lic-titulo">{l.titulo}</div>
                               <div className="lic-dep">{l.dependencia}</div>
                             </div>
-                            <div className="lic-num">#{l.numero}</div>
+                            <div className="lic-num-wrap">
+                              <div className="lic-num">{l.numero !== "—" ? `#${l.numero}` : ""}</div>
+                              {l.numero && l.numero !== "—" && (
+                                <button
+                                  className="lic-copy"
+                                  title="Copiar número de procedimiento"
+                                  onClick={() => {
+                                    navigator.clipboard?.writeText(l.numero)
+                                      .then(() => showToast("✓ Número copiado"))
+                                      .catch(() => showToast("No se pudo copiar"));
+                                  }}
+                                >📋</button>
+                              )}
+                            </div>
                           </div>
 
                           <div className="lic-meta">
@@ -1103,6 +1122,19 @@ export default function LicitaIA() {
                               </div>
                             </div>
                           )}
+
+                          {/* Enlace al portal */}
+                          <div className="lic-actions">
+                            <a
+                              className="lic-portal-link"
+                              href="https://compranetv2.sonora.gob.mx/inicio/portal-licitaciones"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={l.numero !== "—" ? `Buscar "${l.numero}" en CompraNet Sonora` : "Ver portal CompraNet Sonora"}
+                            >
+                              Ver en CompraNet →
+                            </a>
+                          </div>
                         </div>
                       );
                     })}
