@@ -3,6 +3,8 @@
 
 export const config = { api: { bodyParser: { sizeLimit: "80mb" } } };
 
+import { setCORS, isPDFBase64 } from "../../lib/security";
+
 const CLAUDE_API = "https://api.anthropic.com/v1/messages";
 const MODEL      = "claude-sonnet-4-5";
 const MAX_TOKENS = 4096;
@@ -105,10 +107,9 @@ Reglas:
 }
 
 export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", process.env.FRONTEND_ORIGIN || "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  const corsOk = setCORS(req, res);
   if (req.method === "OPTIONS") return res.status(200).end();
+  if (!corsOk)                  return res.status(403).json({ error: "Origen no permitido" });
   if (req.method !== "POST")    return res.status(405).json({ error: "Método no permitido" });
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -122,6 +123,10 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Campo 'propuesta64' requerido (PDF en base64)" });
   if (bases64.length > 43_000_000 || propuesta64.length > 43_000_000)
     return res.status(413).json({ error: "Uno de los PDFs supera el límite de 32 MB" });
+  if (!isPDFBase64(bases64))
+    return res.status(400).json({ error: "El archivo de bases no es un PDF válido" });
+  if (!isPDFBase64(propuesta64))
+    return res.status(400).json({ error: "El archivo de propuesta no es un PDF válido" });
 
   const prompt = buildPrompt(empresa || null);
 

@@ -6,6 +6,8 @@
 
 export const config = { api: { responseLimit: "10mb" } };
 
+import { setCORS } from "../../lib/security";
+
 // ── constantes ────────────────────────────────────────────────────────────────
 const V2_API   = "https://compranetv2_2.sonora.gob.mx";
 const OLD_BASE = "https://compranet.sonora.gob.mx";
@@ -261,7 +263,10 @@ async function tryCSV() {
 
 // ── handler ───────────────────────────────────────────────────────────────────
 export default async function handler(req, res) {
-  if (req.method !== "GET") return res.status(405).json({ error: "Método no permitido" });
+  const corsOk = setCORS(req, res);
+  if (req.method === "OPTIONS") return res.status(200).end();
+  if (!corsOk)                  return res.status(403).json({ error: "Origen no permitido" });
+  if (req.method !== "GET")     return res.status(405).json({ error: "Método no permitido" });
 
   const token = req.query?.token || req.headers?.["x-compranet-token"] || "";
 

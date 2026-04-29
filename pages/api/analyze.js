@@ -3,6 +3,8 @@
 // Requiere: ANTHROPIC_API_KEY en variables de entorno
 // No se necesitan dependencias adicionales
 
+import { setCORS, isPDFBase64 } from "../../lib/security";
+
 const CLAUDE_API = "https://api.anthropic.com/v1/messages";
 const MODEL      = "claude-sonnet-4-5";
 const MAX_TOKENS = 4096;
@@ -145,10 +147,9 @@ La "conclusion" DEBE terminar con exactamente una de estas frases:
 // ─── HANDLER ──────────────────────────────────────────────────────────────────
 export default async function handler(req, res) {
   // CORS
-  res.setHeader("Access-Control-Allow-Origin", process.env.FRONTEND_ORIGIN || "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  const corsOk = setCORS(req, res);
   if (req.method === "OPTIONS") return res.status(200).end();
+  if (!corsOk)                  return res.status(403).json({ error: "Origen no permitido" });
   if (req.method !== "POST")    return res.status(405).json({ error: "Método no permitido" });
 
   // API key desde variables de entorno — nunca expuesta al cliente
@@ -170,6 +171,9 @@ export default async function handler(req, res) {
   // ~32MB en base64 ≈ 43MB de texto
   if (base64PDF.length > 43_000_000) {
     return res.status(413).json({ error: "PDF supera el límite de 32MB" });
+  }
+  if (!isPDFBase64(base64PDF)) {
+    return res.status(400).json({ error: "El archivo no es un PDF válido" });
   }
 
   const prompt = buildPrompt(tipo, empresa || null);
