@@ -9,8 +9,9 @@ const supabase = createClient(
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 const API_BASE = "";
-const skEmpresa   = (uid) => `licitaia_${uid}_empresa`;
-const skHistorial = (uid) => `licitaia_${uid}_historial`;
+const skEmpresa      = (uid) => `licitaia_${uid}_empresa`;
+const skHistorial    = (uid) => `licitaia_${uid}_historial`;
+const skLicitaciones = (uid) => `licitaia_${uid}_licitaciones`;
 
 // ─── STORAGE ──────────────────────────────────────────────────────────────────
 const store = {
@@ -476,6 +477,8 @@ tr:nth-child(even) td{background:rgba(255,255,255,0.02)}
 .dash-empty .de-sub{font-size:13px;line-height:1.6}
 .dash-fuente{font-family:var(--mono);font-size:10px;color:var(--ink3);padding:4px 10px;background:var(--surface);border:1px solid var(--border);border-radius:5px}
 .rate-warn{background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:9px;padding:11px 15px;font-size:13px;color:var(--yellow);margin-bottom:18px;display:flex;align-items:center;gap:8px}
+.lic-anticipo{font-family:var(--mono);font-size:10px;color:var(--ink2)}
+.lic-anticipo-nd{color:var(--ink3);font-style:italic}
 
 /* ── LOGIN ── */
 .login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:20px}
@@ -921,6 +924,7 @@ function EmpresaForm({ empresa, onSave, onCancel }) {
     nombre:"", sector:"", facturacion:"", empleados:"",
     certificaciones:"", experiencia:"", capacidades:"", historial:"",
     codigoPostal:"", latEmpresa:null, lonEmpresa:null, ciudadResuelta:"",
+    capitalDisponible:"",
     distanciaCerca:"15", distanciaMedia:"25", distanciaLejos:"50",
   });
   const [geocoding, setGeocoding] = useState(false);
@@ -964,6 +968,7 @@ function EmpresaForm({ empresa, onSave, onCancel }) {
           <div className="fl"><label className="lbl">Sector *</label><select className="sel" value={f.sector} onChange={s("sector")}><option value="">Seleccionar...</option>{SECTORES.map(x=><option key={x}>{x}</option>)}</select></div>
           <div className="fl"><label className="lbl">Facturación Anual *</label><select className="sel" value={f.facturacion} onChange={s("facturacion")}><option value="">Seleccionar...</option>{FACTURACION.map(x=><option key={x}>{x}</option>)}</select></div>
           <div className="fl"><label className="lbl">Empleados</label><input className="inp" value={f.empleados} onChange={s("empleados")} placeholder="Ej: 45"/></div>
+          <div className="fl"><label className="lbl">Capital disponible para licitaciones (MXN)</label><input className="inp" type="number" min="0" value={f.capitalDisponible} onChange={s("capitalDisponible")} placeholder="Ej: 5000000"/></div>
         </div>
       </div>
       <div className="card">
@@ -1076,10 +1081,11 @@ export default function LicitaIA() {
   const [licitError,    setLicitError]    = useState(null);
   const [licitMeta,     setLicitMeta]     = useState(null);
   const [rate,          setRate]          = useState(()=>{ try { return getRateLimit(); } catch { return { usos:0, ultima:null, resetAt:null }; } });
-  const [filtroDepe,    setFiltroDepe]    = useState("");
-  const [filtroFecha,   setFiltroFecha]   = useState("");
+  const [filtroDepe,      setFiltroDepe]      = useState("");
+  const [filtroFecha,     setFiltroFecha]     = useState("");
   const [filtroEstatus,   setFiltroEstatus]   = useState("");
   const [filtroDistancia, setFiltroDistancia] = useState("");
+  const [filtroCapital,   setFiltroCapital]   = useState("");
   const [v2Token,       setV2Token]       = useState(()=>{ try { return localStorage.getItem("licitaia_v4_v2token")||""; } catch { return ""; } });
   const [showToken,     setShowToken]     = useState(false);
 
@@ -1107,9 +1113,17 @@ export default function LicitaIA() {
 
   // Cargar/limpiar datos del usuario cuando cambia la sesión
   useEffect(() => {
-    if (!user) { setEmpresa(null); setHistorial([]); return; }
+    if (!user) {
+      setEmpresa(null); setHistorial([]); setLicitaciones([]); setLicitMeta(null);
+      return;
+    }
     setEmpresa(store.get(skEmpresa(user.id)));
     setHistorial(store.get(skHistorial(user.id)) || []);
+    const cached = store.get(skLicitaciones(user.id));
+    if (cached?.licitaciones?.length) {
+      setLicitaciones(cached.licitaciones);
+      setLicitMeta(cached.meta || null);
+    }
   }, [user]);
 
   const showToast = useCallback((msg)=>{ setToast(msg); setTimeout(()=>setToast(null),3200); },[]);
@@ -1141,14 +1155,17 @@ export default function LicitaIA() {
       const res = await fetch(url);
       if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e?.error || `Error ${res.status}`); }
       const body = await res.json();
-      setLicitaciones(body.licitaciones || []);
-      setLicitMeta({ fuente: body.fuente, total: body.total, timestamp: body.timestamp, mensaje: body.mensaje, conToken: body.conToken });
+      const lics = body.licitaciones || [];
+      const meta = { fuente: body.fuente, total: body.total, timestamp: body.timestamp, mensaje: body.mensaje, conToken: body.conToken };
+      setLicitaciones(lics);
+      setLicitMeta(meta);
+      store.set(skLicitaciones(user.id), { licitaciones: lics, meta });
     } catch(e) {
       setLicitError(e.message || "Error desconocido");
     } finally {
       setLicitLoading(false);
     }
-  }, [showToast]);
+  }, [showToast, user]);
 
   // Cargar automáticamente al entrar al dashboard (sin consumir rate si ya hay datos)
   useEffect(()=>{
@@ -1464,6 +1481,13 @@ export default function LicitaIA() {
                 if (!filtroDistancia || !empresa?.latEmpresa) return true;
                 return l.distCat === filtroDistancia;
               })
+              .filter(l => {
+                if (!filtroCapital || !empresa?.capitalDisponible) return true;
+                const cap = Number(empresa.capitalDisponible);
+                if (!cap || isNaN(cap)) return true;
+                if (l.monto === null || l.monto === undefined || isNaN(Number(l.monto))) return true;
+                return Number(l.monto) <= cap;
+              })
               .sort((a,b) => {
                 // Si hay empresa: ordenar por score desc, luego fecha desc
                 // Sin empresa: ordenar por fecha desc
@@ -1488,12 +1512,6 @@ export default function LicitaIA() {
                   </div>
                 )}
 
-                {limitado && (
-                  <div className="rate-warn">
-                    ⏳ Límite de actualizaciones alcanzado. Próximo reinicio: {fmtTs(rate.resetAt)}.
-                  </div>
-                )}
-
                 {/* ── Toolbar ── */}
                 <div className="dash-toolbar">
                   <div className="dash-filters">
@@ -1513,9 +1531,15 @@ export default function LicitaIA() {
                         <option value="lejos">🔴 Lejos (≤{empresa.distanciaLejos||50} km)</option>
                       </select>
                     )}
+                    {empresa?.capitalDisponible && (
+                      <select className="dash-sel" value={filtroCapital} onChange={e=>setFiltroCapital(e.target.value)}>
+                        <option value="">💰 Todo monto</option>
+                        <option value="apto">💰 Dentro de mi capital</option>
+                      </select>
+                    )}
                     <input type="date" className="dash-inp" value={filtroFecha} onChange={e=>setFiltroFecha(e.target.value)} title="Publicadas desde"/>
-                    {(filtroDepe||filtroFecha||filtroEstatus||filtroDistancia) && (
-                      <button className="btn btn-ghost btn-sm" onClick={()=>{setFiltroDepe("");setFiltroFecha("");setFiltroEstatus("");setFiltroDistancia("");}}>✕ Limpiar</button>
+                    {(filtroDepe||filtroFecha||filtroEstatus||filtroDistancia||filtroCapital) && (
+                      <button className="btn btn-ghost btn-sm" onClick={()=>{setFiltroDepe("");setFiltroFecha("");setFiltroEstatus("");setFiltroDistancia("");setFiltroCapital("");}}>✕ Limpiar</button>
                     )}
                   </div>
 
@@ -1526,9 +1550,11 @@ export default function LicitaIA() {
                       onClick={fetchLicitaciones}
                       style={{gap:6}}
                     >
-                      {licitLoading ? "Cargando…" : "↺ Actualizar"}
+                      {licitLoading ? "Cargando…" : limitado ? `⏳ Reinicio: ${fmtTs(rate.resetAt)}` : "↺ Actualizar"}
                     </button>
-                    <span className="dash-rate">Usos disponibles: {usosDisp} de {LICIT_MAX_USOS}</span>
+                    <span className="dash-rate">
+                      {limitado ? "Límite diario alcanzado" : `Usos disponibles: ${usosDisp} de ${LICIT_MAX_USOS}`}
+                    </span>
                     {rate.ultima && <span className="dash-last">Últ. actualización: {fmtTs(rate.ultima)}</span>}
                   </div>
                 </div>
@@ -1660,6 +1686,13 @@ export default function LicitaIA() {
                             )}
                           </div>
 
+                          <div className="lic-anticipo">
+                            {l.anticipo !== null && l.anticipo !== undefined
+                              ? <span style={{color:"var(--green)"}}>💵 Anticipo: {l.anticipo}%</span>
+                              : <span className="lic-anticipo-nd">Sin datos de anticipo</span>
+                            }
+                          </div>
+
                           {/* Score de relevancia */}
                           {sc !== null && (
                             <div className="lic-score-row">
@@ -1699,7 +1732,7 @@ export default function LicitaIA() {
                     <div className="de-icon">🔍</div>
                     <div className="de-title">Sin resultados con estos filtros</div>
                     <div className="de-sub">
-                      <button className="btn btn-ghost btn-sm" onClick={()=>{setFiltroDepe("");setFiltroFecha("");setFiltroEstatus("");setFiltroDistancia("");}}>Limpiar filtros</button>
+                      <button className="btn btn-ghost btn-sm" onClick={()=>{setFiltroDepe("");setFiltroFecha("");setFiltroEstatus("");setFiltroDistancia("");setFiltroCapital("");}}>Limpiar filtros</button>
                     </div>
                   </div>
                 )}
@@ -1710,7 +1743,6 @@ export default function LicitaIA() {
                     <div className="de-title">Sin licitaciones cargadas</div>
                     <div className="de-sub">
                       {licitMeta?.mensaje || "Presioná Actualizar para extraer las licitaciones vigentes del portal CompraNet Sonora."}
-                      {limitado && <><br/><br/>Límite de usos alcanzado. Próximo reinicio: {fmtTs(rate.resetAt)}.</>}
                     </div>
                   </div>
                 )}

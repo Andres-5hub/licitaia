@@ -75,6 +75,7 @@ function fromPortal(d) {
     tipo:             d.nombre_procedimiento || "—",
     caracter:         d.nombre_caracter_licitacion || null,
     monto:            d.monto_maximo || d.monto_estimado || null,
+    anticipo:         d.porcentaje_anticipo ?? d.pct_anticipo ?? d.anticipo ?? null,
     fuente:           "v2-portal",
   };
 }
@@ -93,6 +94,7 @@ function fromV2Admin(d, i) {
     tipo:             d.tipoProcedimiento?.descripcion || d.tipo    || "—",
     caracter:         null,
     monto:            d.montoMaximo || d.montoEstimado || null,
+    anticipo:         d.porcentajeAnticipo ?? d.anticipo ?? null,
     fuente:           "v2-admin",
   };
 }
@@ -111,6 +113,7 @@ function fromCSVRow(d, i) {
     tipo:             d["Tipo de Licitacion"]      || "—",
     caracter:         null,
     monto:            null,
+    anticipo:         null,
     fuente:           "portal-v1-csv",
   };
 }
