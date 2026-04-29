@@ -9,8 +9,8 @@ const supabase = createClient(
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 const API_BASE = "";
-const SK_EMPRESA   = "licitaia_v4_empresa";
-const SK_HISTORIAL = "licitaia_v4_historial";
+const skEmpresa   = (uid) => `licitaia_${uid}_empresa`;
+const skHistorial = (uid) => `licitaia_${uid}_historial`;
 
 // ─── STORAGE ──────────────────────────────────────────────────────────────────
 const store = {
@@ -838,6 +838,13 @@ function LoginScreen({ onLogin }) {
       if (modo === "login") {
         const { data, error: e } = await supabase.auth.signInWithPassword({ email, password: pass });
         if (e) throw e;
+        const { data: aprobRow } = await supabase
+          .from("aprobaciones").select("aprobado").eq("email", data.user.email).maybeSingle();
+        if (!aprobRow?.aprobado) {
+          await supabase.auth.signOut();
+          setError("Tu cuenta está en revisión. Te avisaremos cuando tengas acceso.");
+          return;
+        }
         onLogin(data.user);
       } else if (modo === "registro") {
         const { error: e } = await supabase.auth.signUp({ email, password: pass });
@@ -1034,11 +1041,12 @@ function EmpresaForm({ empresa, onSave, onCancel }) {
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 export default function LicitaIA() {
-  const [user,       setUser]      = useState(null);
-  const [authReady,  setAuthReady] = useState(false);
-  const [view,       setView]      = useState("analizar");
-  const [empresa,    setEmpresa]   = useState(()=>store.get(SK_EMPRESA));
-  const [historial,  setHistorial] = useState(()=>store.get(SK_HISTORIAL)||[]);
+  const [user,            setUser]           = useState(null);
+  const [authReady,       setAuthReady]      = useState(false);
+  const [pendingApproval, setPendingApproval]= useState(false);
+  const [view,            setView]           = useState("analizar");
+  const [empresa,         setEmpresa]        = useState(null);
+  const [historial,       setHistorial]      = useState([]);
   const [histDetail, setHistDetail]= useState(null);
   const [file,       setFile]      = useState(null);
   const [tipo,       setTipo]      = useState("viabilidad");
@@ -1075,17 +1083,34 @@ export default function LicitaIA() {
   const [v2Token,       setV2Token]       = useState(()=>{ try { return localStorage.getItem("licitaia_v4_v2token")||""; } catch { return ""; } });
   const [showToken,     setShowToken]     = useState(false);
 
-  // Verificar sesión al cargar
+  // Verificar sesión al cargar + gate de aprobación
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        const { data: aprobRow } = await supabase
+          .from("aprobaciones").select("aprobado").eq("email", session.user.email).maybeSingle();
+        if (aprobRow?.aprobado) {
+          setUser(session.user);
+        } else {
+          await supabase.auth.signOut();
+          setPendingApproval(true);
+        }
+      }
       setAuthReady(true);
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
-      setUser(session?.user ?? null);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") { setUser(null); setPendingApproval(false); }
+      // SIGNED_IN y INITIAL_SESSION se manejan en getSession o en LoginScreen
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  // Cargar/limpiar datos del usuario cuando cambia la sesión
+  useEffect(() => {
+    if (!user) { setEmpresa(null); setHistorial([]); return; }
+    setEmpresa(store.get(skEmpresa(user.id)));
+    setHistorial(store.get(skHistorial(user.id)) || []);
+  }, [user]);
 
   const showToast = useCallback((msg)=>{ setToast(msg); setTimeout(()=>setToast(null),3200); },[]);
 
@@ -1095,9 +1120,9 @@ export default function LicitaIA() {
   };
 
   const handleSaveEmpresa = useCallback((data)=>{
-    store.set(SK_EMPRESA, data); setEmpresa(data);
+    store.set(skEmpresa(user.id), data); setEmpresa(data);
     showToast("✓ Perfil guardado"); setView("analizar");
-  },[showToast]);
+  },[showToast, user]);
 
   // ── Fetch licitaciones (con rate limit) ──────────────────────────────────
   const fetchLicitaciones = useCallback(async ()=>{
@@ -1154,11 +1179,11 @@ export default function LicitaIA() {
       setResult(data); setWarnings(w||[]);
       const entry = { id:Date.now(), fecha:new Date().toISOString(), archivo:file.name, tipo, veredicto:data.veredicto||null, score:data.score??null, nombre:data.licitacion?.nombre||file.name, organismo:data.licitacion?.organismo||"", data };
       const newH = [entry,...historial].slice(0,40);
-      setHistorial(newH); store.set(SK_HISTORIAL, newH);
+      setHistorial(newH); store.set(skHistorial(user.id), newH);
     } catch(e) {
       setError(e.message||"Error desconocido"); setStep(2);
     } finally { setLoading(false); }
-  },[file,tipo,empresa,historial]);
+  },[file,tipo,empresa,historial,user]);
 
   const acceptRevFile = useCallback((f, slot) => {
     if (!f) return;
@@ -1199,6 +1224,30 @@ export default function LicitaIA() {
         <style>{CSS}</style>
         <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"var(--bg)"}}>
           <div className="loading"><div className="spinner"/><div className="ld-msg">Cargando...</div></div>
+        </div>
+      </>
+    );
+  }
+
+  // Cuenta pendiente de aprobación
+  if (pendingApproval) {
+    return (
+      <>
+        <style>{CSS}</style>
+        <div className="login-wrap">
+          <div className="login-card">
+            <div className="login-logo">Licita<em>IA</em></div>
+            <div className="login-sub">Motor de Licitaciones</div>
+            <div style={{textAlign:"center",padding:"28px 0 20px"}}>
+              <div style={{fontSize:44,marginBottom:14}}>⏳</div>
+              <div style={{fontFamily:"var(--display)",fontSize:18,fontWeight:700,marginBottom:10}}>Cuenta en revisión</div>
+              <div style={{fontSize:13.5,color:"var(--ink3)",lineHeight:1.65}}>
+                Tu cuenta está siendo revisada por el administrador.<br/>
+                Te avisaremos cuando tengas acceso.
+              </div>
+            </div>
+            <button className="login-btn" onClick={()=>setPendingApproval(false)}>← Volver al login</button>
+          </div>
         </div>
       </>
     );
@@ -1378,7 +1427,7 @@ export default function LicitaIA() {
                       {h.score!=null&&<div style={{fontFamily:"var(--mono)",fontSize:20,fontWeight:700,color:scoreCol(h.score)}}>{h.score}</div>}
                     </div>
                   ))}
-                  <button className="btn-danger" onClick={()=>{setHistorial([]);store.del(SK_HISTORIAL);showToast("Historial eliminado")}}>🗑 Limpiar historial</button>
+                  <button className="btn-danger" onClick={()=>{setHistorial([]);store.del(skHistorial(user.id));showToast("Historial eliminado")}}>🗑 Limpiar historial</button>
                 </>
               )}
             </div>
